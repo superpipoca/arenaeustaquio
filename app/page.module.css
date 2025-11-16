@@ -660,3 +660,378 @@
     align-items: flex-start;
   }
 }
+
+.wizardLayout {
+  min-height: 100vh;
+  width: 100%;
+  background:
+    radial-gradient(140% 180% at 0% 0%, #1a1a1a 0%, #050608 40%, #000000 80%);
+  color: #ffffff;
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.3fr);
+  gap: 2rem;
+  padding: 4rem 1.5rem;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1120px) {
+  .wizardLayout {
+    padding: 4rem 2rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .wizardLayout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 3rem 1.25rem 2.5rem;
+  }
+}
+
+.wizardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.wizardPreview {
+  position: sticky;
+  top: 4.5rem;
+  align-self: flex-start;
+}
+
+@media (max-width: 900px) {
+  .wizardPreview {
+    position: static;
+    order: -1;
+  }
+}
+
+.wizardTracker {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.wizardStep {
+  flex: 1;
+  padding: 0.5rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.wizardStepCurrent {
+  border-color: rgba(0, 255, 255, 0.8);
+  background: radial-gradient(circle at 0% 0%, rgba(0, 255, 255, 0.2), transparent 60%);
+  color: #ffffff;
+}
+
+.wizardStepDone {
+  border-color: rgba(0, 255, 153, 0.7);
+  background: radial-gradient(circle at 0% 0%, rgba(0, 255, 153, 0.18), transparent 60%);
+  color: rgba(220, 255, 230, 0.9);
+}
+
+.wizardActions {
+  margin-top: 1.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.errorBox {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 0, 85, 0.7);
+  background: rgba(255, 0, 85, 0.08);
+}
+
+.errorTitle {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #ff7a9e;
+  margin-bottom: 0.25rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 900px) {
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .formGrid > label:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 0.65rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: rgba(0, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.35);
+}
+
+.inputHelp {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: rgba(200, 230, 255, 0.85);
+}
+
+.checkboxLabel {
+  margin-top: 1.1rem;
+  display: flex;
+  gap: 0.65rem;
+  font-size: 0.82rem;
+  align-items: flex-start;
+  line-height: 1.4;
+}
+
+.checkbox {
+  margin-top: 0.2rem;
+}
+
+.previewCard {
+  border-radius: 1.1rem;
+  border: 1px solid rgba(0, 255, 255, 0.45);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(0, 255, 255, 0.18), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(255, 0, 85, 0.16), transparent 55%),
+    #050608;
+  padding: 1.3rem 1.2rem 1.1rem;
+  box-shadow: 0 24px 40px rgba(0, 0, 0, 0.85);
+}
+
+.previewTokenDisplay {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.previewTokenIcon {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  background: radial-gradient(circle at 0% 0%, #00ffff, #ff0055);
+  color: #000;
+  font-size: 1.1rem;
+}
+
+.previewTokenInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.previewTokenName {
+  font-size: 0.95rem;
+}
+
+.previewTokenTicker {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(200, 255, 255, 0.9);
+}
+
+.previewTokenKind {
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+  color: rgba(220, 230, 255, 0.9);
+}
+
+.previewTokenNarrative {
+  font-size: 0.86rem;
+  color: rgba(230, 240, 255, 0.92);
+  margin-bottom: 1rem;
+}
+
+.riskZone {
+  margin-top: 0.75rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.riskZoneTitle {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(0, 255, 255, 0.9);
+  margin-bottom: 0.4rem;
+}
+
+.riskBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #050608;
+  margin-bottom: 0.4rem;
+}
+
+.riskZoneDesc {
+  font-size: 0.8rem;
+  color: rgba(230, 240, 255, 0.9);
+}
+
+.previewFooter {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.previewRiskKicker {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 221, 0, 0.9);
+}
+
+.previewRiskMain {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.cardButton {
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.08s ease;
+}
+
+.cardButton:hover {
+  border-color: rgba(0, 255, 255, 0.8);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.85);
+}
+
+.cardButtonActive {
+  border-color: rgba(0, 255, 153, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 153, 0.7),
+    0 20px 36px rgba(0, 0, 0, 0.9);
+}
+
+.forbiddenList {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+}
+
+.forbiddenList code {
+  font-size: 0.78rem;
+}
+
+.successBox {
+  margin-top: 0.6rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(0, 255, 153, 0.7);
+  background: rgba(0, 255, 153, 0.08);
+}
+
+.successTitle {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(0, 255, 153, 0.95);
+  margin-bottom: 0.25rem;
+}
+
+.successText {
+  font-size: 0.86rem;
+  color: rgba(220, 255, 230, 0.95);
+}
+
+.successPanel {
+  margin: 3rem auto 2rem;
+  max-width: 720px;
+}
+
+.ctaDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+/* GRID PRINCIPAL DO STEP 3: TOKENOMICS + RISCO */
+.cardsGridRisk {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.15fr);
+  gap: 1.75rem;
+  align-items: flex-start;
+  margin-top: 1.6rem;
+}
+
+@media (max-width: 900px) {
+  .cardsGridRisk {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+}
+
+/* FORM DE TOKENOMICS: MAIS RESPIRO */
+.formGridTokenomics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.1rem 1rem;
+  margin-top: 1.2rem;
+}
+
+@media (max-width: 900px) {
+  .formGridTokenomics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* CARD LARGO PARA TAXA + CHECKLIST */
+.cardWide {
+  margin-top: 1.9rem;
+  padding-top: 1.4rem;
+  padding-bottom: 1.4rem;
+}
+
