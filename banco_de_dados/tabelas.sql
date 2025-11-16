@@ -913,3 +913,179 @@ create table if not exists public.coin_candles_1d (
 
 create index if not exists idx_coin_candles_1d_coin_date
   on public.coin_candles_1d (coin_id, bucket_date desc);
+
+alter type coin_risk_zone add value if not exists 'NEUTRO';
+
+create table if not exists public.coin_candles_1d (
+  coin_id       uuid not null references public.coins (id) on delete cascade,
+  bucket_date   date not null,                 -- dia (YYYY-MM-DD)
+
+  open_price    numeric(30, 8) not null,
+  high_price    numeric(30, 8) not null,
+  low_price     numeric(30, 8) not null,
+  close_price   numeric(30, 8) not null,
+
+  volume_base   numeric(30, 8) not null default 0, -- volume em token base (ex: "BRL interno")
+  volume_coin   numeric(30, 8) not null default 0, -- volume em unidades da coin
+  trades_count  integer        not null default 0,
+
+  created_at    timestamptz    not null default now(),
+  updated_at    timestamptz    not null default now(),
+
+  primary key (coin_id, bucket_date)
+);
+
+create index if not exists idx_coin_candles_1d_coin_date
+  on public.coin_candles_1d (coin_id, bucket_date desc);
+
+create or replace function public.compute_risk_zone(p_coin_id uuid)
+returns coin_risk_zone
+language sql
+stable
+as $$
+with
+-- ==========================
+-- estado atual: preço e volume 24h
+-- ==========================
+current as (
+  select
+    cms.price_current   as p_now,
+    cms.volume_24h_base as vol24
+  from public.coin_market_state cms
+  where cms.coin_id = p_coin_id
+),
+
+-- ==========================
+-- candles dos últimos dias (base para métricas)
+-- ==========================
+candles as (
+  select
+    bucket_date,
+    close_price,
+    volume_base,
+    -- retorno log entre dias consecutivos
+    ln(
+      close_price
+      / nullif(lag(close_price) over (order by bucket_date), 0)
+    ) as ret
+  from public.coin_candles_1d
+  where coin_id = p_coin_id
+    and bucket_date >= current_date - 7
+),
+
+-- ==========================
+-- agregados (preço médio, volume médio, vol)
+-- ==========================
+hist as (
+  select
+    -- preço de 24h atrás
+    max(close_price) filter (where bucket_date = current_date - 1) as p_24h,
+    -- média de preço 7d
+    avg(close_price)                                               as p_avg_7d,
+    -- média de volume 7d
+    avg(volume_base)                                               as v_avg_7d,
+    -- volatilidade dos retornos log (últimos dias)
+    stddev_pop(ret)                                                as vol7
+  from candles
+),
+
+metrics as (
+  select
+    c.p_now,
+    h.p_24h,
+    h.p_avg_7d,
+    h.v_avg_7d,
+    h.vol7,
+    -- retornos e razões
+    case
+      when h.p_24h is not null and h.p_24h > 0
+      then ln(c.p_now / h.p_24h)
+      else null
+    end as r24,
+    case
+      when h.v_avg_7d is not null and h.v_avg_7d > 0
+      then c.vol24 / h.v_avg_7d
+      else null
+    end as vr,
+    case
+      when h.p_avg_7d is not null and h.p_avg_7d > 0
+      then c.p_now / h.p_avg_7d
+      else null
+    end as pr
+  from current c, hist h
+)
+
+select
+  case
+    -- ==========================
+    -- sem histórico suficiente => NEUTRO
+    -- ==========================
+    when m.p_24h is null
+      or m.p_24h <= 0
+      or m.p_avg_7d is null
+      or m.p_avg_7d <= 0
+      or m.v_avg_7d is null
+      or m.v_avg_7d <= 0
+    then 'NEUTRO'::coin_risk_zone
+
+    -- ==========================
+    -- 🔴 BOLHA
+    -- ==========================
+    when (
+      -- bolha inflando
+      m.r24 is not null
+      and m.r24 >= ln(1.5)          -- +50% ou mais em 24h
+      and m.vr  is not null
+      and m.vr  >= 3                -- volume >= 3x média
+      and m.pr  is not null
+      and m.pr  >= 2                -- preço >= 2x média 7d
+    )
+    or (
+      -- bolha estourando: -40% ou mais com volume insano
+      m.r24 is not null
+      and m.r24 <= ln(0.6)
+      and m.vr  is not null
+      and m.vr  >= 3
+    )
+    then 'BOLHA'::coin_risk_zone
+
+    -- ==========================
+    -- 🟠 HYPE
+    -- ==========================
+    when (
+      -- alta moderada com volume forte
+      m.r24 is not null
+      and m.r24 between ln(1.1) and ln(1.5)
+      and m.vr  is not null
+      and m.vr  >= 1.5
+    )
+    or (
+      -- volatilidade alta + volume bem acima da média
+      m.vol7 is not null
+      and m.vol7 >= 0.15
+      and m.vr   is not null
+      and m.vr   >= 2
+    )
+    then 'HYPE'::coin_risk_zone
+
+    -- ==========================
+    -- 🔵 FRIO
+    -- ==========================
+    when
+      m.r24 is not null
+      and abs(m.r24) <= ln(1.03)      -- variação <= ±3% em 24h
+      and m.vr  is not null
+      and m.vr  < 0.7                 -- volume < 70% da média
+      and (
+        m.vol7 is null                -- sem histórico suficiente
+        or m.vol7 <= 0.08             -- baixa volatilidade (~8%)
+      )
+    then 'FRIO'::coin_risk_zone
+
+    -- ==========================
+    -- ⚪ Caso padrão: NEUTRO
+    -- ==========================
+    else 'NEUTRO'::coin_risk_zone
+  end
+from metrics m;
+$$;
