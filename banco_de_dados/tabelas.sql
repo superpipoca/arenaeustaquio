@@ -877,3 +877,39 @@ begin
   return v_trade;
 end;
 $$;
+
+alter type coin_risk_zone add value if not exists 'NEUTRO';
+
+alter table public.coin_market_state
+alter column risk_zone set default 'NEUTRO';
+
+-- =========================================================
+-- Tabela de candles diários por moeda (1d)
+-- Usada pela função compute_risk_zone para calcular:
+-- - preço 24h atrás
+-- - média de preço 7d
+-- - média de volume 7d
+-- - volatilidade (stddev dos retornos)
+-- =========================================================
+
+create table if not exists public.coin_candles_1d (
+  coin_id       uuid not null references public.coins (id) on delete cascade,
+  bucket_date   date not null,                 -- dia (YYYY-MM-DD)
+
+  open_price    numeric(30, 8) not null,
+  high_price    numeric(30, 8) not null,
+  low_price     numeric(30, 8) not null,
+  close_price   numeric(30, 8) not null,
+
+  volume_base   numeric(30, 8) not null default 0, -- volume em token base (ex: "BRL interno")
+  volume_coin   numeric(30, 8) not null default 0, -- volume em unidades da coin
+  trades_count  integer        not null default 0,
+
+  created_at    timestamptz    not null default now(),
+  updated_at    timestamptz    not null default now(),
+
+  primary key (coin_id, bucket_date)
+);
+
+create index if not exists idx_coin_candles_1d_coin_date
+  on public.coin_candles_1d (coin_id, bucket_date desc);
