@@ -1,5 +1,5 @@
--- 3ustaquio – Schema V1 + AMM V1
--- Pensado para Postgres / Supabase
+-- 3ustaquio – Schema V1 + AMM V1 (CORRIGIDO)
+-- Ordem ajustada: coins vem antes de wallet_balances
 
 -- =========================================================
 -- Extensões
@@ -67,7 +67,26 @@ create table if not exists public.creators (
 create index if not exists idx_creators_user_id on public.creators (user_id);
 
 -- =========================================================
--- WALLETS & BALANCES
+-- COIN TYPES / COINS / COLLATERAL
+-- =========================================================
+
+create table if not exists public.coin_types (
+  id          smallserial primary key,
+  code        coin_type_code not null unique,
+  name        text not null,
+  description text
+);
+
+insert into public.coin_types (code, name, description)
+values
+  ('MEME',       'Meme / Narrativa pura', 'Token puramente narrativo / especulativo'),
+  ('LASTREADA',  'Lastreada',             'Token com algum tipo de lastro declarado'),
+  ('COMUNIDADE', 'Comunidade',            'Token de comunidade / projeto coletivo')
+on conflict (code) do nothing;
+
+-- wallets vem antes de coins (porque coins referencia wallet pool)
+-- =========================================================
+-- WALLETS
 -- =========================================================
 
 create table if not exists public.wallets (
@@ -86,36 +105,9 @@ create table if not exists public.wallets (
 
 create index if not exists idx_wallets_user_id on public.wallets (user_id);
 
-create table if not exists public.wallet_balances (
-  wallet_id         uuid not null references public.wallets (id) on delete cascade,
-  coin_id           uuid not null references public.coins (id) on delete cascade,
-  balance_available numeric(30, 8) not null default 0,
-  balance_locked    numeric(30, 8) not null default 0,
-  updated_at        timestamptz not null default now(),
-  primary key (wallet_id, coin_id)
-);
-
--- o índice por coin é útil para ver quem segura determinada moeda
-create index if not exists idx_wallet_balances_coin_id on public.wallet_balances (coin_id);
-
 -- =========================================================
--- COINS / TYPES / COLLATERAL
+-- COINS
 -- =========================================================
-
-create table if not exists public.coin_types (
-  id          smallserial primary key,
-  code        coin_type_code not null unique,
-  name        text not null,
-  description text
-);
-
-insert into public.coin_types (code, name, description)
-values
-  ('MEME',       'Meme / Narrativa pura', 'Token puramente narrativo / especulativo'),
-  ('LASTREADA',  'Lastreada',             'Token com algum tipo de lastro declarado'),
-  ('COMUNIDADE', 'Comunidade',            'Token de comunidade / projeto coletivo')
-on conflict (code) do nothing;
-
 
 create table if not exists public.coins (
   id                 uuid primary key default gen_random_uuid(),
@@ -162,6 +154,21 @@ create table if not exists public.coin_collateral (
 );
 
 create index if not exists idx_coin_collateral_coin_id on public.coin_collateral (coin_id);
+
+-- =========================================================
+-- WALLET BALANCES (agora DEPOIS de coins)
+-- =========================================================
+
+create table if not exists public.wallet_balances (
+  wallet_id         uuid not null references public.wallets (id) on delete cascade,
+  coin_id           uuid not null references public.coins (id) on delete cascade,
+  balance_available numeric(30, 8) not null default 0,
+  balance_locked    numeric(30, 8) not null default 0,
+  updated_at        timestamptz not null default now(),
+  primary key (wallet_id, coin_id)
+);
+
+create index if not exists idx_wallet_balances_coin_id on public.wallet_balances (coin_id);
 
 -- =========================================================
 -- MARKET STATE (AMM) / PERFORMANCE
@@ -363,7 +370,7 @@ end;
 $$;
 
 -- =========================================================
--- FUNÇÃO: swap_buy (usuário compra token da pool AMM)
+-- FUNÇÃO: swap_buy (usuário compra da pool AMM)
 -- =========================================================
 
 create or replace function public.swap_buy(
@@ -528,10 +535,6 @@ begin
 
   v_price_effective := p_amount_base_in / v_amount_coin_out;
 
-  -- =========================
-  -- Atualização de saldos
-  -- =========================
-
   -- base: debita comprador, credita pool, plataforma e creator
   update public.wallets
   set balance_base = balance_base - p_amount_base_in,
@@ -566,10 +569,7 @@ begin
     set balance_available = public.wallet_balances.balance_available + excluded.balance_available,
         updated_at        = now();
 
-  -- =========================
-  -- Atualiza estado de mercado
-  -- =========================
-
+  -- atualiza estado de mercado
   update public.coin_market_state
   set base_reserve     = v_new_base_reserve,
       coin_reserve     = v_new_coin_reserve,
@@ -582,10 +582,7 @@ begin
       updated_at       = now()
   where coin_id = p_coin_id;
 
-  -- =========================
-  -- Registra trade + fees
-  -- =========================
-
+  -- registra trade + fees
   insert into public.trades (
     coin_id,
     buyer_wallet_id,
@@ -623,7 +620,7 @@ end;
 $$;
 
 -- =========================================================
--- FUNÇÃO: swap_sell (usuário vende token para a pool AMM)
+-- FUNÇÃO: swap_sell (usuário vende para a pool AMM)
 -- =========================================================
 
 create or replace function public.swap_sell(
@@ -797,10 +794,6 @@ begin
 
   v_price_effective := v_amount_base_out / p_amount_coin_in;
 
-  -- =========================
-  -- Atualização de saldos
-  -- =========================
-
   -- coin: debita vendedor, credita pool
   update public.wallet_balances
   set balance_available = balance_available - p_amount_coin_in,
@@ -835,10 +828,7 @@ begin
       updated_at   = now()
   where id = v_creator_wallet.id;
 
-  -- =========================
-  -- Atualiza estado de mercado
-  -- =========================
-
+  -- atualiza estado de mercado
   update public.coin_market_state
   set base_reserve     = v_new_base_reserve,
       coin_reserve     = v_new_coin_reserve,
@@ -851,10 +841,7 @@ begin
       updated_at       = now()
   where coin_id = p_coin_id;
 
-  -- =========================
-  -- Registra trade + fees
-  -- =========================
-
+  -- registra trade + fees
   insert into public.trades (
     coin_id,
     buyer_wallet_id,
