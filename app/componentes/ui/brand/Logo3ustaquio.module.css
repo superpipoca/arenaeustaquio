@@ -1,0 +1,91 @@
+/* Container geral do logo */
+.wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.18rem;
+}
+
+/* Tamanhos (escala tipográfica) */
+.sm {
+  font-size: 1.4rem;
+}
+
+.md {
+  font-size: 1.9rem;
+}
+
+.lg {
+  font-size: 2.4rem;
+}
+
+/* Linha principal do logotipo */
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.08em;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  /* família sugerida no manual (carrega via <link> ou @import no globals) */
+  font-family: "Oswald", "JetBrains Sans", system-ui, -apple-system,
+    BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+}
+
+/* 3 em Ciano Hacker, levemente menor pra não dominar tudo */
+.three {
+  color: #00ffff;
+  transform: translateY(0.02em);
+}
+
+/* Bloco “ustaquio” */
+.core {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+/* “ustaqu” em branco brutal */
+.coreText {
+  color: #ffffff;
+}
+
+/* Tratamento especial do “i” */
+.iWrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+}
+
+/* haste do i em branco (substitui o ponto normal) */
+.iStem {
+  color: #ffffff;
+}
+
+/* pingo do i em Vermelho Elétrico, posicionado manualmente */
+.iDot {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0.9em;
+  width: 0.16em;
+  height: 0.16em;
+  border-radius: 999px;
+  background-color: #ff0055;
+}
+
+/* “o” final em Ciano Hacker */
+.oCyan {
+  color: #00ffff;
+}
+
+/* Tagline conforme manual: uppercase, espaçada, discreta */
+.tagline {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 0.55em;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.64);
+}

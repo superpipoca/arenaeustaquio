@@ -1,0 +1,662 @@
+/* =====================================
+   app/page.module.css
+   ===================================== */
+
+.page {
+  min-height: 100vh;
+  background: radial-gradient(120% 160% at 0% 0%, #1a1a1a 0%, #050608 40%, #000000 80%);
+  color: #ffffff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+}
+
+.inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .inner {
+    padding: 0 2rem;
+  }
+}
+
+/* HEADER */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(16px);
+  background: linear-gradient(to bottom, rgba(5, 6, 8, 0.96), rgba(5, 6, 8, 0.8));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0.25rem;
+  gap: 1.5rem;
+}
+
+.logo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  text-decoration: none;
+}
+
+.logoMark {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #00ffff;
+}
+
+.logoTagline {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.nav {
+  display: none;
+}
+
+.navList {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navItem {
+  font-size: 0.85rem;
+}
+
+.navLink {
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  padding-bottom: 0.1rem;
+  border-bottom: 1px solid transparent;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.navLink:hover {
+  color: #ffffff;
+  border-color: rgba(0, 255, 255, 0.6);
+}
+
+.headerCta {
+  display: none;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.08s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ctaPrimary {
+  background: #ff0055;
+  color: #ffffff;
+  box-shadow: 0 0 24px rgba(255, 0, 85, 0.35);
+}
+
+.ctaPrimary:hover {
+  background: #ff2a72;
+  transform: translateY(-1px);
+}
+
+.ctaGhost {
+  background: transparent;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ctaGhost:hover {
+  border-color: rgba(0, 255, 255, 0.6);
+}
+
+@media (min-width: 900px) {
+  .nav {
+    display: block;
+  }
+
+  .headerCta {
+    display: block;
+  }
+}
+
+/* HERO */
+
+.hero {
+  padding: 4.5rem 0 3.5rem;
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.3fr);
+  gap: 3rem;
+  align-items: stretch;
+}
+
+.heroCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #ffdd00;
+}
+
+.heroTitle {
+  font-size: clamp(2.4rem, 3vw + 1.4rem, 3.4rem);
+  line-height: 1.08;
+  font-weight: 800;
+}
+
+.heroHighlight {
+  color: #ff0055;
+}
+
+.heroSubtitle {
+  font-size: 0.98rem;
+  max-width: 32rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.riskNotice {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(255, 0, 85, 0.6);
+  background: rgba(255, 0, 85, 0.06);
+}
+
+.riskLabel {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #ff7a9e;
+  margin-bottom: 0.25rem;
+}
+
+.riskText {
+  font-size: 0.8rem;
+  color: rgba(255, 200, 210, 0.9);
+}
+
+.heroTerminal {
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  background: radial-gradient(circle at 0% 0%, rgba(0, 255, 255, 0.16), transparent 60%),
+    linear-gradient(to bottom, #06080a, #050608);
+  box-shadow: 0 0 36px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+}
+
+.terminalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(0, 255, 255, 0.25);
+}
+
+.terminalTitle {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.badgeDanger {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 0, 85, 0.18);
+  color: #ff7a9e;
+  border: 1px solid rgba(255, 0, 85, 0.7);
+}
+
+.terminalBody {
+  padding: 1.1rem 1.1rem 1rem;
+}
+
+.terminalLine {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.86rem;
+  margin: 0.1rem 0;
+}
+
+.terminalDivider {
+  height: 1px;
+  margin: 0.9rem 0 0.7rem;
+  background: linear-gradient(to right, rgba(0, 255, 255, 0.8), transparent);
+}
+
+.terminalHint {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.78rem;
+  color: rgba(200, 255, 255, 0.8);
+}
+
+.terminalTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+}
+
+.tag {
+  font-size: 0.72rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  color: rgba(200, 255, 255, 0.9);
+}
+
+@media (max-width: 900px) {
+  .headerInner {
+    padding: 0.85rem 0;
+  }
+
+  .hero {
+    padding-top: 3.3rem;
+  }
+
+  .heroGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* SECTIONS GENÉRICAS */
+
+.section {
+  padding: 3.5rem 0 3.2rem;
+}
+
+.sectionAlt {
+  padding: 3.5rem 0 3.2rem;
+  background: radial-gradient(circle at 100% 0%, rgba(255, 0, 85, 0.16), transparent 55%),
+    radial-gradient(circle at 0% 100%, rgba(0, 255, 255, 0.12), transparent 55%), #050608;
+}
+
+.sectionHeader {
+  max-width: 40rem;
+  margin-bottom: 2rem;
+}
+
+.sectionKicker {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(0, 255, 255, 0.85);
+  margin-bottom: 0.6rem;
+}
+
+.sectionTitle {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.sectionDescription {
+  font-size: 0.96rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .cardsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.card,
+.cardAlt {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(145deg, rgba(26, 26, 26, 0.96), rgba(10, 10, 10, 0.96));
+  padding: 1.4rem 1.25rem 1.25rem;
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.72);
+}
+
+.cardAlt {
+  background: linear-gradient(145deg, rgba(26, 26, 26, 0.98), rgba(18, 12, 20, 0.98));
+}
+
+.cardHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.cardBadge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 255, 255, 0.5);
+  color: rgba(200, 255, 255, 0.9);
+}
+
+.cardKicker {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 221, 0, 0.9);
+}
+
+.cardTitle {
+  font-size: 1.1rem;
+  margin: 0.3rem 0 0.6rem;
+}
+
+.cardBody {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cardList {
+  margin: 0.7rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.86rem;
+  color: rgba(220, 230, 255, 0.9);
+}
+
+.cardList li + li {
+  margin-top: 0.25rem;
+}
+
+.pillRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.pill {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0.7rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pillLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(0, 255, 255, 0.9);
+}
+
+.pillValue {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* SALA DE MÁQUINA */
+
+.machineGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr);
+  gap: 1.8rem;
+  align-items: stretch;
+}
+
+.machinePanel {
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  background: radial-gradient(circle at 0% 0%, rgba(0, 255, 255, 0.22), transparent 55%), #050608;
+  padding: 1.1rem 1rem;
+}
+
+.machineCode {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  color: rgba(200, 255, 255, 0.9);
+}
+
+.machineList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.machineTitle {
+  font-size: 1rem;
+}
+
+.machineItems {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.machineItems li + li {
+  margin-top: 0.3rem;
+}
+
+.warningBox {
+  margin-top: 0.9rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.8rem;
+  border: 1px dashed rgba(255, 221, 0, 0.7);
+  background: rgba(255, 221, 0, 0.06);
+}
+
+.warningTitle {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255, 221, 0, 0.95);
+  margin-bottom: 0.2rem;
+}
+
+.warningText {
+  font-size: 0.86rem;
+  color: rgba(255, 245, 200, 0.95);
+}
+
+@media (max-width: 900px) {
+  .machineGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* MANIFESTO */
+
+.manifestoGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.8rem;
+}
+
+@media (min-width: 900px) {
+  .manifestoGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.manifestoColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.manifestoTitle {
+  font-size: 1rem;
+}
+
+.manifestoList {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.manifestoList li + li {
+  margin-top: 0.3rem;
+}
+
+.calloutBox {
+  margin-top: 1.1rem;
+  padding: 1rem 1rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 0, 85, 0.5);
+  background: radial-gradient(circle at 0% 0%, rgba(255, 0, 85, 0.22), transparent 55%), #050608;
+}
+
+.calloutText {
+  font-size: 0.9rem;
+  color: rgba(255, 224, 235, 0.95);
+  margin-bottom: 0.7rem;
+}
+
+/* FOOTER */
+
+.footer {
+  padding: 2.4rem 0 2.2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: #050608;
+}
+
+.footerInner {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.footerBrand {
+  max-width: 30rem;
+}
+
+.footerLogo {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  color: #00ffff;
+  margin-bottom: 0.4rem;
+}
+
+.footerTagline {
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+
+.footerLegal {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.footerNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.8rem;
+}
+
+.footerHeading {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 0.6rem;
+}
+
+.footerNavList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.footerNavItem + .footerNavItem {
+  margin-top: 0.25rem;
+}
+
+.footerNavLink {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.footerNavLink:hover {
+  color: rgba(0, 255, 255, 0.9);
+}
+
+.footerDisclaimer {
+  margin-top: 1.6rem;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 1.1rem;
+}
+
+@media (min-width: 900px) {
+  .footerInner {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+}
