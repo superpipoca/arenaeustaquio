@@ -5,8 +5,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header3ustaquio from "../../componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "../../componentes/ui/layout/Footer3ustaquio";
-// import { supabaseClient } from "../../lib/supabaseClient";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "../../lib/supabaseClient";
 import { getOrCreateCreatorProfile } from "../../lib/creatorProfile";
 
 type CreatorCoin = {
@@ -20,7 +19,6 @@ type CreatorCoin = {
 
 export default function CriadorDashboardPage() {
   const router = useRouter();
-  const supabase = SupabaseClient as any;
 
   const [coins, setCoins] = useState<CreatorCoin[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,10 +32,11 @@ export default function CriadorDashboardPage() {
       setErro(null);
 
       try {
+        // garante user + creator, ou lança NOT_AUTH
         const { creatorId } = await getOrCreateCreatorProfile();
 
         const { data, error } = await supabase
-          .from("coins")
+          .from<CreatorCoin>("coins")
           .select("id, slug, symbol, name, status, created_at")
           .eq("creator_id", creatorId)
           .order("created_at", { ascending: false });
@@ -48,8 +47,14 @@ export default function CriadorDashboardPage() {
           setCoins(data || []);
         }
       } catch (err: any) {
-        console.error(err);
-        if (!cancelled) {
+        console.error("Erro ao carregar dashboard do criador:", err);
+
+        if (cancelled) return;
+
+        if (err?.message === "NOT_AUTH") {
+          setErro("Você precisa estar logado para ver o painel do criador.");
+          router.push("/criador/login");
+        } else {
           setErro(
             "Não foi possível carregar seus tokens. Verifique o login e tente novamente."
           );
@@ -66,7 +71,7 @@ export default function CriadorDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   return (
     <>
@@ -81,6 +86,16 @@ export default function CriadorDashboardPage() {
             <p className="creator-subtitle">
               Aqui você acompanha a narrativa em tempo real — não uma planilha de promessa.
             </p>
+
+            <div style={{ marginTop: "16px" }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => router.push("/criador/token/novo")}
+              >
+                Criar novo token de narrativa
+              </button>
+            </div>
           </header>
 
           {erro && (
@@ -91,13 +106,13 @@ export default function CriadorDashboardPage() {
 
           {loading && <p className="cta-note">Carregando seus tokens...</p>}
 
-          {!loading && coins.length === 0 && (
+          {!loading && !erro && coins.length === 0 && (
             <p className="cta-note">
-              Você ainda não lançou nenhum token. Comece criando um na jornada do criador.
+              Você ainda não lançou nenhum token. Comece criando um na Jornada do Criador.
             </p>
           )}
 
-          {!loading && coins.length > 0 && (
+          {!loading && !erro && coins.length > 0 && (
             <section className="creator-token-list">
               {coins.map((t) => (
                 <article

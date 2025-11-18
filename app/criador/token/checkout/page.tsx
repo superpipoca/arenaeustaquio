@@ -1,366 +1,166 @@
-// // app/criador/token/checkout/page.tsx
-// "use client";
-
-// import React, { useState } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-// import Header3ustaquio from "../../../componentes/ui/layout/Header3ustaquio";
-// import Footer3ustaquio from "../../../componentes/ui/layout/Footer3ustaquio";
-// // import { supabaseClient } from "../../../lib/supabaseClient";
-// import { SupabaseClient } from "@supabase/supabase-js";
-// import { getOrCreateCreatorProfile } from "../../../lib/creatorProfile";
-
-// const RISK_DISCLAIMER = `
-// Este token é um experimento especulativo de narrativa.
-// Não é investimento seguro, não é produto financeiro regulado, não tem garantia de retorno.
-// Você pode perder 100% do valor colocado aqui. Ao usar o 3ustaquio, você declara que entende que isso é jogo de alto risco e age por conta própria.
-// `.trim();
-
-// function slugifyToken(ticker: string, tokenName: string): string {
-//   const base = (ticker || tokenName || "token")
-//     .toLowerCase()
-//     .replace(/[^a-z0-9]+/g, "-")
-//     .replace(/^-+|-+$/g, "");
-
-//   return base || "token";
-// }
-
-// export default function CheckoutTokenPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const supabase = SupabaseClient as any;
-
-//   const type = searchParams.get("type") || "TOKEN";
-//   const publicName = searchParams.get("publicName") || "Criador";
-//   const tokenName = searchParams.get("tokenName") || "Seu token";
-//   const ticker = (searchParams.get("ticker") || "TICKER").toUpperCase();
-//   const headline = searchParams.get("headline") || "";
-//   const story = searchParams.get("story") || "";
-
-//   const [aceito, setAceito] = useState(false);
-//   const [loading, setLoading] = useState(false);
-//   const [erro, setErro] = useState<string | null>(null);
-
-//   const tokenUrl = `https://app.3ustaquio.com/token/${ticker.toLowerCase()}`;
-
-//   const handleLaunch = async () => {
-//     setErro(null);
-//     setLoading(true);
-
-//     try {
-//       // garante user + creator
-//       const { creatorId } = await getOrCreateCreatorProfile();
-
-//       // pega coin_type_id associado a 'MEME'
-//       // (por enquanto tratamos tudo como narrativa pura;
-//       // depois você pode mapear para LASTREADA/COMUNIDADE por tipo)
-//       const { data: coinType, error: coinTypeError } = await supabase
-//         .from("coin_types")
-//         .select("id, code")
-//         .eq("code", "MEME")
-//         .single();
-
-//       if (coinTypeError || !coinType) {
-//         throw new Error("Não foi possível localizar o tipo de moeda MEME.");
-//       }
-
-//       const slug = slugifyToken(ticker, tokenName);
-
-//       const narrativeShort =
-//         headline.trim().length > 0
-//           ? headline.trim().slice(0, 240)
-//           : `Token de narrativa criado por ${publicName} na plataforma 3ustaquio. Experimento especulativo de alto risco, sem promessa de retorno.`;
-
-//       const tags: string[] = [
-//         `tipo_criador:${type.toLowerCase()}`,
-//         "origem:3ustaquio-ui",
-//       ];
-
-//       const { data: newCoin, error: insertError } = await supabase
-//         .from("coins")
-//         .insert({
-//           slug,
-//           symbol: ticker,
-//           name: tokenName,
-//           creator_id: creatorId,
-//           coin_type_id: coinType.id,
-//           status: "ACTIVE", // já nasce ativa na Arena
-//           narrative_short: narrativeShort,
-//           narrative_long: story || null,
-//           risk_disclaimer: RISK_DISCLAIMER,
-//           tags,
-//         })
-//         .select("id, slug, symbol, name")
-//         .single();
-
-//       if (insertError || !newCoin) {
-//         console.error(insertError);
-//         throw new Error("Erro ao salvar o token na base 3ustaquio.");
-//       }
-
-//       // Aqui daria para chamar init_coin_market_state via RPC
-//       // se você já tiver pool_wallet + reservas configuradas.
-//       // Exemplo (deixa comentado até ter estrutura pronta):
-//       //
-//       // await supabase.rpc("init_coin_market_state", {
-//       //   p_coin_id: newCoin.id,
-//       //   p_base_reserve: 1000,
-//       //   p_coin_reserve: 1000,
-//       // });
-
-//       const params = new URLSearchParams({
-//         tokenId: newCoin.id,
-//         slug: newCoin.slug,
-//         tokenName: newCoin.name,
-//         ticker: newCoin.symbol,
-//       });
-
-//       router.push(`/criador/token/sucesso?${params.toString()}`);
-//     } catch (err: any) {
-//       console.error(err);
-//       setErro(
-//         err?.message ||
-//           "Não foi possível lançar o token. Verifique sua sessão e tente novamente."
-//       );
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   return (
-//     <>
-//       <Header3ustaquio />
-//       <main className="creator-screen">
-//         <div className="container creator-shell">
-//           <header className="creator-header">
-//             <span className="creator-kicker">Passo – Pagar taxa & lançar</span>
-//             <h1 className="creator-title">
-//               Revise seu <span>token</span> antes de apertar o botão vermelho
-//             </h1>
-//             <p className="creator-subtitle">
-//               Essa é a hora de conferir se você está confortável com o que vai jogar na Arena —
-//               e com os riscos que vêm junto.
-//             </p>
-//           </header>
-
-//           <section className="creator-main">
-//             {/* Esquerda – resumo (igual ao que você já tinha) */}
-//             <div className="creator-form-side">
-//               <div className="creator-card">
-//                 <div className="section-label">Resumo do token</div>
-//                 <h2 className="section-title">O que você está lançando</h2>
-
-//                 <div className="creator-two-cols">
-//                   <div className="creator-summary-block">
-//                     <h3>Dados principais</h3>
-//                     <ul>
-//                       <li>
-//                         <span>Tipo:</span> <strong>{type}</strong>
-//                       </li>
-//                       <li>
-//                         <span>Criador:</span> <strong>{publicName}</strong>
-//                       </li>
-//                       <li>
-//                         <span>Nome:</span> <strong>{tokenName}</strong>
-//                       </li>
-//                       <li>
-//                         <span>Ticker:</span> <strong>{ticker}</strong>
-//                       </li>
-//                     </ul>
-
-//                     <h4>Frase curta</h4>
-//                     <p>{headline || "Você ainda não definiu a frase curta."}</p>
-//                   </div>
-
-//                   <div className="creator-summary-block">
-//                     <h3>Narrativa</h3>
-//                     <p className="creator-summary-story">
-//                       {story
-//                         ? story
-//                         : "Você ainda não escreveu a narrativa. Volte e explique por que esse token existe."}
-//                     </p>
-//                   </div>
-//                 </div>
-
-//                 <div className="creator-summary-block" style={{ marginTop: "10px" }}>
-//                   <h3>Link da Arena (exemplo visual)</h3>
-//                   <p className="creator-summary-url">{tokenUrl}</p>
-//                 </div>
-//               </div>
-//             </div>
-
-//             {/* Direita – pagamento & risco */}
-//             <aside className="creator-preview-side">
-//               <div className="creator-card">
-//                 <div className="section-label">Pagamento & compromisso</div>
-//                 <h2 className="section-title">Taxa 3ustaquio & riscos</h2>
-
-//                 <div className="creator-summary-block">
-//                   <h3>Resumo financeiro</h3>
-//                   <ul>
-//                     <li>
-//                       <span>Taxa 3ustaquio:</span> <strong>R$ 199,00</strong>
-//                     </li>
-//                     <li>
-//                       <span>Custos de rede (estimado):</span> <strong>R$ 12,00</strong>
-//                     </li>
-//                     <li>
-//                       <span>Total:</span> <strong>R$ 211,00</strong>
-//                     </li>
-//                   </ul>
-//                   <p className="field-help">
-//                     Taxa de infraestrutura e listagem. Não é taxa de gestão de investimento.
-//                   </p>
-//                 </div>
-
-//                 <div className="creator-risk-box" style={{ marginTop: "10px" }}>
-//                   <p>
-//                     Ao lançar, você está criando um token <strong>especulativo</strong>, não um
-//                     investimento seguro. Ninguém tem garantia de retorno.
-//                   </p>
-
-//                   <label className="creator-risk-check">
-//                     <input
-//                       type="checkbox"
-//                       checked={aceito}
-//                       onChange={(e) => setAceito(e.target.checked)}
-//                     />
-//                     <span>
-//                       Eu entendo que este token não é investimento seguro, que o preço pode ir a zero
-//                       e que o 3ustaquio é infraestrutura de código, não banco/corretora.
-//                     </span>
-//                   </label>
-//                 </div>
-
-//                 {erro && (
-//                   <p
-//                     className="cta-note"
-//                     style={{ color: "var(--accent-primary)", marginTop: 8 }}
-//                   >
-//                     {erro}
-//                   </p>
-//                 )}
-
-//                 <button
-//                   type="button"
-//                   className="btn-primary creator-nav-btn"
-//                   disabled={!aceito || loading}
-//                   onClick={handleLaunch}
-//                   style={{ marginTop: "14px" }}
-//                 >
-//                   {loading
-//                     ? "Lançando token..."
-//                     : "Entendo o risco e quero lançar meu token"}
-//                 </button>
-//               </div>
-//             </aside>
-//           </section>
-//         </div>
-//         <Footer3ustaquio />
-//       </main>
-//     </>
-//   );
-// }
 // app/criador/token/checkout/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import Header3ustaquio from "../../../componentes/ui/layout/Header3ustaquio";
-import Footer3ustaquio from "../../../componentes/ui/layout/Footer3ustaquio";
+import { useRouter, useSearchParams } from "next/navigation";
+// import Header3ustaquio from "../../componentes/ui/layout/Header3ustaquio";
+// import Footer3ustaquio from "../../componentes/ui/layout/Footer3ustaquio";
+import Header3ustaquio from "@/app/componentes/ui/layout/Header3ustaquio";
+import Footer3ustaquio from "@/app/componentes/ui/layout/Footer3ustaquio";
 import { supabase } from "../../../lib/supabaseClient";
+import { createPixCharge } from "../../../lib/pixPayment";
 
 type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
 
-export default function CheckoutTokenPage() {
+const LAUNCH_FEE = 19.9; // 💰 taxa de criação do token (ajusta o valor aqui)
+
+export default function CriadorTokenCheckoutPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const search = useSearchParams();
 
-  const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  // Dados vindos da tela anterior
+  const tokenType = (search.get("type") as TokenType) || "";
+  const publicName = search.get("publicName") || "";
+  const tokenName = search.get("tokenName") || "";
+  const ticker = search.get("ticker") || "";
+  const headline = search.get("headline") || "";
+  const story = search.get("story") || "";
 
-  // Dados enviados da etapa anterior
-  const tokenType = (searchParams.get("type") || "") as TokenType;
-  const publicName = searchParams.get("publicName") || "";
-  const tokenName = searchParams.get("tokenName") || "";
-  const ticker = searchParams.get("ticker") || "";
-  const headline = searchParams.get("headline") || "";
-  const story = searchParams.get("story") || "";
+  // Dados do pagador
+  const [cpf, setCpf] = useState("");
+  const [nome, setNome] = useState(publicName);
+  const [email, setEmail] = useState("");
 
+  // Estado de PIX
+  const [generating, setGenerating] = useState(false);
+  const [pixData, setPixData] = useState<any | null>(null);
+  const [pixError, setPixError] = useState<string | null>(null);
+
+  // Estado de fluxo
+  const [step, setStep] = useState<"REVIEW" | "PIX">("REVIEW");
+
+  // Tenta puxar e-mail do usuário logado pra facilitar
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // ✅ Aqui é onde estava quebrando: supabase.auth tem que existir
-        const { data, error } = await supabase.auth.getUser();
+    let cancelled = false;
 
-        if (error || !data?.user) {
-          setAuthError(
-            "Você precisa estar logado para finalizar o lançamento do token."
-          );
-          setLoading(false);
-          return;
-        }
+    async function loadUserEmail() {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data?.user || cancelled) return;
 
-        setUserEmail(data.user.email ?? null);
-        setLoading(false);
-      } catch (err) {
-        console.error("Erro ao buscar usuário no Supabase:", err);
-        setAuthError(
-          "Não foi possível validar seu login. Tente recarregar a página ou entrar novamente."
-        );
-        setLoading(false);
+      const userEmail =
+        data.user.email ||
+        (Array.isArray(data.user.identities) &&
+          data.user.identities[0]?.email) ||
+        "";
+
+      if (!cancelled && userEmail) {
+        setEmail(userEmail);
       }
-    };
+    }
 
-    checkAuth();
+    loadUserEmail();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleConfirmLaunch = async () => {
-    // aqui depois você chama uma route handler (API) ou RPC para:
-    // - criar coin em `coins`
-    // - criar pool wallet
-    // - chamar init_coin_market_state
-    // - etc.
-    alert("Aqui entra a chamada para criar a moeda no banco (coins / AMM).");
+  const typeLabel =
+    tokenType === "PESSOA"
+      ? "Token de Pessoa"
+      : tokenType === "PROJETO"
+      ? "Token de Projeto"
+      : tokenType === "COMUNIDADE"
+      ? "Token de Comunidade"
+      : "Token de Narrativa";
+
+  const tokenUrl = `https://app.3ustaquio.com/token/${(ticker || "TOKEN")
+    .toLowerCase()
+    .replace(/\s+/g, "")}`;
+
+  function mascararCpf(v: string) {
+    let value = v.replace(/\D/g, "").slice(0, 11);
+    if (value.length >= 3) value = value.replace(/(\d{3})(\d)/, "$1.$2");
+    if (value.length >= 7) value = value.replace(/(\d{3})\.(\d{3})(\d)/, "$1.$2.$3");
+    if (value.length >= 11)
+      value = value.replace(/(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})/, "$1.$2.$3-$4");
+    return value;
+  }
+
+  function cpfValido(cpf: string) {
+    const clean = cpf.replace(/\D/g, "");
+    return clean.length === 11;
+    // se quiser, depois coloca validação de dígito verificador
+  }
+
+  const canGeneratePix =
+    !!nome.trim() && !!email.trim() && cpfValido(cpf) && !generating;
+
+  const handleGeneratePix = async () => {
+    if (!canGeneratePix) return;
+
+    try {
+      setGenerating(true);
+      setPixError(null);
+
+      const response = await createPixCharge({
+        value: LAUNCH_FEE,
+        cpf,
+        name: nome.trim(),
+        email: email.trim(),
+        description: `Taxa de criação do token ${tokenName || ticker}`,
+        metadata: {
+          tokenType,
+          publicName,
+          tokenName,
+          ticker,
+        },
+      });
+
+      setPixData(response);
+      setStep("PIX");
+    } catch (err: any) {
+      console.error("Erro ao gerar PIX:", err);
+      setPixError(
+        err?.message ||
+          "Não foi possível gerar o PIX. Tente novamente em alguns instantes."
+      );
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <>
-        <Header3ustaquio />
-        <main className="creator-screen">
-          <div className="container creator-shell">
-            <p>Carregando informações de autenticação...</p>
-          </div>
-          <Footer3ustaquio />
-        </main>
-      </>
-    );
-  }
+  const handleCopyCode = () => {
+    if (!pixData) return;
 
-  if (authError) {
-    return (
-      <>
-        <Header3ustaquio />
-        <main className="creator-screen">
-          <div className="container creator-shell">
-            <div className="creator-card">
-              <h1 className="section-title">Login necessário</h1>
-              <p className="section-subtitle">{authError}</p>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => router.push("/login")}
-              >
-                Entrar na Arena
-              </button>
-            </div>
-          </div>
-          <Footer3ustaquio />
-        </main>
-      </>
-    );
-  }
+    // tenta achar um campo de copia-e-cola
+    const copyCode =
+      pixData?.Pix?.emv ||
+      pixData?.Pix?.qrCode ||
+      pixData?.qrCode ||
+      "";
+
+    if (!copyCode) return;
+
+    navigator.clipboard
+      .writeText(copyCode)
+      .catch((err) => console.error("Erro ao copiar PIX:", err));
+  };
+
+  const handleFinishLaunch = () => {
+    // aqui, por enquanto, só leva pro dashboard.
+    // depois você pluga a lógica de:
+    //  - conferir pagamento
+    //  - criar coin no banco
+    //  - redirecionar pra página do token
+    router.push("/criador/dashboard");
+  };
+
+  // tenta achar imagem base64 do QR (ajuste conforme sua resposta da Celcoin)
+  const qrCodeBase64 =
+    pixData?.Pix?.qrCodeImage ||
+    pixData?.Pix?.base64Image ||
+    null;
 
   return (
     <>
@@ -368,99 +168,194 @@ export default function CheckoutTokenPage() {
       <main className="creator-screen">
         <div className="container creator-shell">
           <header className="creator-header">
-            <span className="creator-kicker">Jornada do Criador</span>
+            <span className="creator-kicker">Passo – Pagamento & Lançamento</span>
             <h1 className="creator-title">
-              Revisar & lançar <span>seu token de narrativa</span>
+              Revise seu <span>token</span> e gere o PIX
             </h1>
             <p className="creator-subtitle">
-              Última etapa antes da Arena. Revise o que você está lançando e confirme
-              que entende o risco. Nenhuma promessa de retorno, nenhum conto de fada.
+              Antes de entrar na Arena, você paga a taxa de criação.
+              Nada aqui é promessa de retorno. É o preço para ligar a máquina da narrativa.
             </p>
           </header>
 
           <section className="creator-main">
+            {/* Coluna esquerda – resumo do token */}
             <div className="creator-form-side">
               <div className="creator-card">
-                <div className="section-label">Passo – Pagar taxa & lançar</div>
-                <h2 className="section-title">Resumo do token</h2>
+                <div className="section-label">Resumo do token</div>
+                <h2 className="section-title">Confere se está tudo na linha vermelha certa</h2>
+                <p className="section-subtitle">
+                  Este é o rascunho do seu token de narrativa. Ele só vai para a Arena depois
+                  da cobrança via PIX e das próximas confirmações.
+                </p>
 
-                <div className="creator-summary-block">
+                <div className="creator-summary">
                   <p>
-                    <strong>Tipo:</strong> {tokenType || "Não informado"}
+                    <strong>Tipo:</strong> {typeLabel}
                   </p>
                   <p>
-                    <strong>Nome público:</strong> {publicName}
+                    <strong>Nome público:</strong> {publicName || "—"}
                   </p>
                   <p>
-                    <strong>Nome do token:</strong> {tokenName}
+                    <strong>Nome do token:</strong> {tokenName || "—"}
                   </p>
                   <p>
-                    <strong>Ticker:</strong> {ticker}
+                    <strong>Ticker:</strong> {ticker || "—"}
                   </p>
                   <p>
-                    <strong>Frase curta:</strong> {headline}
+                    <strong>Headline:</strong>{" "}
+                    {headline || "Sem frase definida ainda."}
+                  </p>
+                  <p>
+                    <strong>História:</strong>{" "}
+                    {story || "Sem narrativa longa definida ainda."}
                   </p>
                 </div>
 
-                <div className="creator-summary-block">
-                  <h3 className="creator-summary-title">Narrativa completa</h3>
-                  <p className="creator-summary-text">{story}</p>
-                </div>
-
-                <div className="creator-summary-block">
-                  <h3 className="creator-summary-title">Dados da conta</h3>
-                  <p className="creator-summary-text">
-                    Você está lançando esse token logado como:
-                    <br />
-                    <strong>{userEmail || "usuário sem e-mail visível"}</strong>
-                  </p>
-                </div>
-
-                <div className="creator-risk-box">
-                  <p>
-                    <strong>Confirmação final de risco:</strong> ao continuar, você reafirma que
-                    este token é especulativo, pode não ter utilidade prática e pode valer zero.
-                    Você é criador de narrativa, não gerente de investimento.
-                  </p>
-                </div>
-
-                {/* Aqui depois você adiciona os detalhes de taxa (valores reais) */}
-                <div className="creator-summary-block">
-                  <h3 className="creator-summary-title">Taxa 3ustaquio (simulada)</h3>
-                  <p className="creator-summary-text">
-                    Taxa de criação e listagem na Arena: <strong>R$ 99,00</strong> (exemplo).  
-                    Valores reais serão definidos na integração com o meio de pagamento.
-                  </p>
-                </div>
-
-                <div className="creator-footer">
-                  <div className="creator-footer-left">
-                    <p className="creator-footer-hint">
-                      Ao confirmar, você não está prometendo retorno para ninguém. Você está
-                      lançando um experimento de narrativa de alto risco.
-                    </p>
-                  </div>
-                  <div className="creator-footer-right">
-                    <button
-                      type="button"
-                      className="btn-primary creator-nav-btn"
-                      onClick={handleConfirmLaunch}
-                    >
-                      Entendo o risco e quero lançar meu token
-                    </button>
-                  </div>
+                <div className="warning-strip" style={{ marginTop: 16 }}>
+                  <strong>Lembra:</strong> este token não é investimento seguro, não é
+                  produto financeiro regulado e pode valer zero. Se isso incomoda, é melhor
+                  não lançar.
                 </div>
               </div>
             </div>
 
-            {/* Coluna direita - poderia ser um preview resumido / card da Arena */}
+            {/* Coluna direita – dados do pagador + PIX */}
             <aside className="creator-preview-side">
-              <div className="creator-preview-card">
+              <div className="creator-card">
+                {step === "REVIEW" && (
+                  <>
+                    <div className="section-label">Dados para o PIX</div>
+                    <h2 className="section-title">Quem está pagando a taxa?</h2>
+                    <p className="section-subtitle">
+                      Esses dados vão para o provedor de pagamento (Celcoin) para emitir o
+                      PIX. Nada disso transforma o token em “investimento regulado”.
+                    </p>
+
+                    <div className="creator-field-group">
+                      <label className="field-label">Nome completo</label>
+                      <input
+                        className="field-input"
+                        value={nome}
+                        onChange={(e) => setNome(e.target.value)}
+                        placeholder="Seu nome completo"
+                      />
+                    </div>
+
+                    <div className="creator-field-group">
+                      <label className="field-label">E-mail</label>
+                      <input
+                        className="field-input"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="seuemail@exemplo.com"
+                      />
+                    </div>
+
+                    <div className="creator-field-group">
+                      <label className="field-label">CPF</label>
+                      <input
+                        className="field-input"
+                        value={cpf}
+                        onChange={(e) => setCpf(mascararCpf(e.target.value))}
+                        placeholder="000.000.000-00"
+                      />
+                      <p className="field-help">
+                        Usado apenas para emissão da cobrança via PIX.
+                      </p>
+                    </div>
+
+                    {pixError && (
+                      <p
+                        className="cta-note"
+                        style={{ color: "var(--accent-primary)", marginTop: 8 }}
+                      >
+                        {pixError}
+                      </p>
+                    )}
+
+                    <div className="creator-footer" style={{ marginTop: 16 }}>
+                      <div className="creator-footer-left">
+                        <p className="creator-footer-hint">
+                          Taxa de criação do token:{" "}
+                          <strong>R$ {LAUNCH_FEE.toFixed(2)}</strong>
+                        </p>
+                      </div>
+                      <div className="creator-footer-right">
+                        <button
+                          type="button"
+                          className="btn-primary creator-nav-btn"
+                          disabled={!canGeneratePix}
+                          onClick={handleGeneratePix}
+                        >
+                          {generating ? "Gerando PIX..." : "Gerar QR Code PIX"}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {step === "PIX" && pixData && (
+                  <>
+                    <div className="section-label">Pagamento via PIX</div>
+                    <h2 className="section-title">Escaneia, paga e volta pra Arena</h2>
+                    <p className="section-subtitle">
+                      Use o QR Code ou o código copia-e-cola no seu app de banco. Depois do
+                      pagamento, clique em “Já paguei, seguir para a Arena”.
+                    </p>
+
+                    <div className="pix-box">
+                      {qrCodeBase64 ? (
+                        <div className="pix-qr-wrapper">
+                          <img
+                            src={`data:image/png;base64,${qrCodeBase64}`}
+                            alt="QR Code PIX"
+                            className="pix-qr-image"
+                          />
+                        </div>
+                      ) : (
+                        <p className="cta-note">
+                          QR Code não retornado pelo gateway. Use o código copia-e-cola
+                          abaixo.
+                        </p>
+                      )}
+
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        style={{ marginTop: 12 }}
+                        onClick={handleCopyCode}
+                      >
+                        Copiar código PIX
+                      </button>
+                    </div>
+
+                    <div className="creator-footer" style={{ marginTop: 16 }}>
+                      <div className="creator-footer-left">
+                        <p className="creator-footer-hint">
+                          Depois do pagamento, clique abaixo. No MVP, a confirmação é manual.
+                        </p>
+                      </div>
+                      <div className="creator-footer-right">
+                        <button
+                          type="button"
+                          className="btn-primary creator-nav-btn"
+                          onClick={handleFinishLaunch}
+                        >
+                          Já paguei, seguir para a Arena
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Card de preview do token, igual ao da tela anterior (opcional) */}
+              <div className="creator-preview-card" style={{ marginTop: 16 }}>
                 <div className="creator-preview-header">
-                  <span className="creator-preview-pill">Preview na Arena</span>
-                  <span className="creator-preview-status">
-                    Alto risco · Especulação consciente
-                  </span>
+                  <span className="creator-preview-pill">{typeLabel}</span>
+                  <span className="creator-preview-status">Pré-lançamento</span>
                 </div>
 
                 <div className="creator-preview-main">
@@ -477,20 +372,28 @@ export default function CheckoutTokenPage() {
                     por <strong>{publicName || "Criador anônimo"}</strong>
                   </p>
 
-                  <p className="creator-preview-headline">{headline}</p>
+                  <p className="creator-preview-headline">
+                    {headline ||
+                      "Escreva uma frase curta explicando que isso é jogo de narrativa de alto risco, não promessa de retorno."}
+                  </p>
 
                   <div className="creator-preview-riskband">
                     <span className="creator-preview-riskdot" />
                     <span>
-                      Não é produto financeiro regulado. Preço pode ir a zero. Entre por conta e risco.
+                      Não é produto financeiro regulado. Preço pode ir a zero. Entre por
+                      conta e risco.
                     </span>
                   </div>
+                </div>
+
+                <div className="creator-preview-footer">
+                  <span className="creator-preview-link-label">Link da Arena (simulado)</span>
+                  <span className="creator-preview-link">{tokenUrl}</span>
                 </div>
               </div>
             </aside>
           </section>
         </div>
-
         <Footer3ustaquio />
       </main>
     </>
