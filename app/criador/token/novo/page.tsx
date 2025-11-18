@@ -117,31 +117,49 @@ export default function CriarTokenPage() {
       return;
     }
 
-    const params = new URLSearchParams({
-      type: tokenType,
-      publicName,
-      tokenName,
-      ticker,
-      headline,
-      story,
-      initialSupply: parsedInitialSupply.toString(),
-      poolPercent: parsedPoolPercent.toString(),
-      faceValue: parsedFaceValue.toString(),
-    });
+    const params = new URLSearchParams();
+
+      params.set("type", tokenType);
+      params.set("publicName", publicName);
+      params.set("tokenName", tokenName);
+      params.set("ticker", ticker);
+      params.set("headline", headline);
+      params.set("story", story);
+
+      params.set("totalSupply", String(parsedInitialSupply)); // 👈 MESMO NOME
+      params.set("poolPercent", String(parsedPoolPercent));
+      params.set("faceValue", String(parsedFaceValue));
+
+
+    // params.set("type", tokenType);                 // "PESSOA" | "PROJETO" | ...
+    // params.set("publicName", publicName);
+    // params.set("tokenName", tokenName);
+    // params.set("ticker", ticker);
+    // params.set("headline", headline);
+    // params.set("story", story);
+
+    // // 👇 nomes alinhados com o checkout + launchTokenAfterPix
+    // params.set("totalSupply", String(parsedInitialSupply));
+    // params.set("poolPercent", String(parsedPoolPercent));
+    // params.set("faceValue", String(parsedFaceValue));
 
     const href = `/criador/token/checkout?${params.toString()}`;
-    console.log("Navegando para checkout:", href);
+    console.log("[NOVO] Navegando para checkout com params:", Object.fromEntries(params));
     router.push(href);
   };
+
+
+
+
 
   const typeLabel =
     tokenType === "PESSOA"
       ? "Token de Pessoa"
       : tokenType === "PROJETO"
-      ? "Token de Projeto"
-      : tokenType === "COMUNIDADE"
-      ? "Token de Comunidade"
-      : "Token de Narrativa";
+        ? "Token de Projeto"
+        : tokenType === "COMUNIDADE"
+          ? "Token de Comunidade"
+          : "Token de Narrativa";
 
   const tokenUrl = `https://app.3ustaquio.com/token/${(ticker || "TOKEN")
     .toLowerCase()
@@ -644,7 +662,7 @@ export default function CriarTokenPage() {
                       <span className="metric-label">Supply inicial</span>
                       <span className="metric-value">
                         {!Number.isNaN(parsedInitialSupply) &&
-                        parsedInitialSupply > 0
+                          parsedInitialSupply > 0
                           ? parsedInitialSupply.toLocaleString("pt-BR")
                           : "—"}
                       </span>
@@ -653,14 +671,13 @@ export default function CriarTokenPage() {
                       <span className="metric-label">Pool de lançamento</span>
                       <span className="metric-value">
                         {!Number.isNaN(parsedPoolPercent) &&
-                        parsedPoolPercent > 0
-                          ? `${parsedPoolPercent}%${
-                              tokensInPool
-                                ? ` (${tokensInPool.toLocaleString(
-                                    "pt-BR"
-                                  )} tokens)`
-                                : ""
-                            }`
+                          parsedPoolPercent > 0
+                          ? `${parsedPoolPercent}%${tokensInPool
+                            ? ` (${tokensInPool.toLocaleString(
+                              "pt-BR"
+                            )} tokens)`
+                            : ""
+                          }`
                           : "—"}
                       </span>
                     </div>
@@ -669,9 +686,9 @@ export default function CriarTokenPage() {
                       <span className="metric-value">
                         {!Number.isNaN(parsedFaceValue) && parsedFaceValue > 0
                           ? `R$ ${parsedFaceValue.toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 8,
-                            })}`
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 8,
+                          })}`
                           : "—"}
                       </span>
                     </div>
