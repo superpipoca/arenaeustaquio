@@ -1724,3 +1724,166 @@ select.field-input:focus {
     width: 100%;
   }
 }
+
+/* Base da jornada do criador */
+.creator-screen {
+  font-size: 16px;              /* sobe o tamanho base */
+  line-height: 1.6;
+  color: var(--text-primary, #f5f5f5);
+}
+
+@media (min-width: 1024px) {
+  .creator-screen {
+    font-size: 17px;            /* um tico maior em desktop */
+  }
+}
+
+/* Container principal do card de criação */
+.creator-card,
+.creator-preview-card {
+  background: var(--bg-elevated, #111);
+  border-radius: 16px;
+  padding: 1.75rem;
+  border: 1px solid var(--border-subtle, #262626);
+}
+
+/* Títulos principais */
+.creator-title {
+  font-size: clamp(2.1rem, 2.7vw, 2.8rem);
+  line-height: 1.25;
+}
+
+.section-title {
+  font-size: clamp(1.35rem, 2vw, 1.7rem);
+  line-height: 1.3;
+}
+
+/* Subtítulos / textos explicativos */
+.creator-subtitle,
+.section-subtitle,
+.creator-footer-hint,
+.creator-footer-hint,
+.field-help {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-muted, #b3b3b3);
+  max-width: 760px;
+}
+
+/* Labels dos campos */
+.field-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted-strong, #e0e0e0);
+  margin-bottom: 0.35rem;
+}
+
+/* Inputs / textareas mais legíveis */
+.field-input,
+.field-textarea {
+  width: 100%;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong, #333);
+  background: #050505;
+  color: #f5f5f5;
+}
+
+.field-input::placeholder,
+.field-textarea::placeholder {
+  color: #666;
+}
+
+/* Botões da escolha de tipo de token */
+.creator-token-type {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.creator-token-type strong {
+  font-size: 1rem;
+}
+
+/* Blocos de risco */
+.creator-risk-box {
+  font-size: 0.95rem;
+}
+
+/* Texto dos checkboxes de risco */
+.creator-risk-check span {
+  font-size: 0.9rem;
+}
+
+/* Faixa de risco no preview */
+.creator-preview-riskband {
+  font-size: 0.9rem;
+}
+
+/* Métricas do preview */
+.creator-preview-metrics {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.metric-label {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, #a3a3a3);
+  margin-bottom: 0.15rem;
+}
+
+.metric-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #f5f5f5;
+}
+
+.metric-note {
+  font-size: 0.75rem;
+  color: var(--text-muted, #999);
+}
+
+/* Caixa de simulação de ganhos do criador */
+.creator-sim-box {
+  font-size: 0.95rem;
+  background: #050505;
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  border: 1px dashed #333;
+}
+
+/* Faixa de alerta / aviso duro */
+.warning-strip {
+  font-size: 0.9rem;
+}
+
+/* Call-to-action */
+.btn-primary,
+.btn-outline,
+.creator-nav-btn {
+  font-size: 0.95rem;
+  padding: 0.7rem 1.4rem;
+}
+
+/* Mobile: dá mais respiro e evita texto espremido */
+@media (max-width: 768px) {
+  .creator-shell {
+    padding-inline: 1rem;
+  }
+
+  .creator-card,
+  .creator-preview-card {
+    padding: 1.3rem;
+  }
+
+  .creator-screen {
+    font-size: 16px; /* não deixa menor que isso em mobile */
+  }
+}

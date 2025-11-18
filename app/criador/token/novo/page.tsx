@@ -80,6 +80,12 @@ export default function CriarTokenPage() {
   const simFeesDay = baseVolumeForSim * FEE_CREATOR_RATE;
   const simFeesMonth = simFeesDay * 30;
 
+  // 💰 Hipótese: toda a oferta é vendida a valor de face
+  const totalSellAtFace =
+    hasEconomics && !Number.isNaN(parsedInitialSupply) && parsedInitialSupply > 0
+      ? parsedInitialSupply * parsedFaceValue
+      : null;
+
   const canContinue: boolean =
     tokenType !== "" &&
     publicName.trim().length >= 2 &&
@@ -153,8 +159,8 @@ export default function CriarTokenPage() {
             </h1>
             <p className="creator-subtitle">
               Não é plano de aposentadoria, não é “investimento seguro”. É um
-              token especulativo da sua história. Você cria, a comunidade
-              decide se entra no jogo.
+              token especulativo da sua história. Você cria, a comunidade decide
+              se entra no jogo.
             </p>
           </header>
 
@@ -362,33 +368,35 @@ export default function CriarTokenPage() {
                   </p>
                 </div>
 
-                {/* 💹 Simulação de incentivos do criador */}
+                {/* 💹 Explicação comercial dos incentivos */}
                 <div className="creator-field-group">
                   <label className="field-label">
                     Onde você pode capturar valor neste jogo (simulação)
                   </label>
                   <p className="field-help">
-                    O desenho é simples:
+                    Na prática, você tem <strong>dois motores de grana</strong>{" "}
+                    se o mercado abraçar a ideia:
                   </p>
                   <ul className="list-check">
                     <li>
-                      Você nasce com uma <strong>bag de tokens</strong> fora da
-                      pool, que pode vender se fizer sentido dentro da
-                      narrativa.
+                      <strong>1. Venda das moedas:</strong> a comunidade
+                      comprando unidades do seu token (pool + sua bag ao longo
+                      do tempo) coloca dinheiro na mesa hoje.
                     </li>
                     <li>
-                      Em cada compra e venda do seu token, existe uma{" "}
-                      <strong>taxa do criador de 5% sobre o volume da
-                      operação</strong> (simulação deste MVP; o real pode ser
-                      ajustado).
+                      <strong>2. Taxa permanente de 5%:</strong> toda compra e
+                      venda do seu token na Arena paga uma taxa de 5% para o
+                      criador — enquanto houver gente transacionando.
                     </li>
                   </ul>
                   <p className="field-help">
-                    Abaixo é só matemática para você entender a ordem de
-                    grandeza. Não é promessa, não é projeção de ganho.
+                    O que vem abaixo é só matemática para você sentir a ordem de
+                    grandeza se der certo. Não é garantia, não é projeção de
+                    ganho.
                   </p>
                 </div>
 
+                {/* 💹 Simulação de volume de trade */}
                 <div className="creator-two-cols">
                   <div className="creator-field-group">
                     <label className="field-label">
@@ -470,6 +478,37 @@ export default function CriarTokenPage() {
                           — apenas como exemplo matemático.
                         </li>
                       </ul>
+                      {totalSellAtFace && totalSellAtFace > 0 && (
+                        <>
+                          <p className="field-label" style={{ marginTop: 8 }}>
+                            E se <strong>todas as unidades do token</strong>{" "}
+                            fossem vendidas a valor de face?
+                          </p>
+                          <p className="field-help">
+                            Com o supply que você definiu, vender{" "}
+                            <strong>100% das moedas</strong> a esse valor de
+                            face significaria, em termos brutos:
+                          </p>
+                          <p className="field-help">
+                            <strong>
+                              R{"$ "}
+                              {totalSellAtFace.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </strong>{" "}
+                            em vendas iniciais de token{" "}
+                            <span className="metric-note">
+                              (não é garantia de demanda, é só a conta).
+                            </span>
+                          </p>
+                          <p className="field-help">
+                            Isso se somaria às taxas de 5% em cada compra e
+                            venda enquanto a comunidade continuar jogando esse
+                            jogo na Arena.
+                          </p>
+                        </>
+                      )}
                       <p className="field-help">
                         O mercado é caótico: pode ter mais volume, menos volume
                         ou nenhum. Aqui é só para enxergar a mecânica.
@@ -680,6 +719,23 @@ export default function CriarTokenPage() {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
+                        </span>
+                      </div>
+                    )}
+                    {totalSellAtFace && totalSellAtFace > 0 && (
+                      <div>
+                        <span className="metric-label">
+                          Se TODA a oferta fosse vendida a valor de face
+                        </span>
+                        <span className="metric-value">
+                          R{"$ "}
+                          {totalSellAtFace.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          <span className="metric-note">
+                            (exemplo matemático, não projeção de retorno)
+                          </span>
                         </span>
                       </div>
                     )}
