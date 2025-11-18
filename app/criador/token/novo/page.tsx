@@ -21,8 +21,9 @@ export default function CriarTokenPage() {
   const [riskCanZero, setRiskCanZero] = useState(false);
   const [riskCreatorRole, setRiskCreatorRole] = useState(false);
 
-  const canContinue =
-    tokenType &&
+  // ✅ deixa explicitamente boolean
+  const canContinue: boolean =
+    tokenType !== "" &&
     publicName.trim().length >= 2 &&
     tokenName.trim().length >= 2 &&
     ticker.trim().length >= 2 &&
@@ -33,6 +34,22 @@ export default function CriarTokenPage() {
     riskCreatorRole;
 
   const handleContinue = () => {
+    // só por garantia e debug
+    if (!canContinue) {
+      console.warn("Tentou continuar sem atender os requisitos", {
+        tokenType,
+        publicNameLen: publicName.trim().length,
+        tokenNameLen: tokenName.trim().length,
+        tickerLen: ticker.trim().length,
+        headlineLen: headline.trim().length,
+        storyLen: story.trim().length,
+        riskNotInvestment,
+        riskCanZero,
+        riskCreatorRole,
+      });
+      return;
+    }
+
     const params = new URLSearchParams({
       type: tokenType,
       publicName,
@@ -42,7 +59,9 @@ export default function CriarTokenPage() {
       story,
     });
 
-    router.push(`/criador/token/checkout?${params.toString()}`);
+    const href = `/criador/token/checkout?${params.toString()}`;
+    console.log("Navegando para checkout:", href);
+    router.push(href);
   };
 
   const typeLabel =
@@ -79,7 +98,9 @@ export default function CriarTokenPage() {
             <div className="creator-form-side">
               <div className="creator-card">
                 <div className="section-label">Passo – Criar moeda</div>
-                <h2 className="section-title">Quem é você e qual é o símbolo desse jogo?</h2>
+                <h2 className="section-title">
+                  Quem é você e qual é o símbolo desse jogo?
+                </h2>
                 <p className="section-subtitle">
                   Escolha o tipo de token, dê nome e conte a história. O resto é Arena.
                 </p>
@@ -92,7 +113,9 @@ export default function CriarTokenPage() {
                       type="button"
                       className={
                         "creator-token-type" +
-                        (tokenType === "PESSOA" ? " creator-token-type--active" : "")
+                        (tokenType === "PESSOA"
+                          ? " creator-token-type--active"
+                          : "")
                       }
                       onClick={() => setTokenType("PESSOA")}
                     >
@@ -103,7 +126,9 @@ export default function CriarTokenPage() {
                       type="button"
                       className={
                         "creator-token-type" +
-                        (tokenType === "PROJETO" ? " creator-token-type--active" : "")
+                        (tokenType === "PROJETO"
+                          ? " creator-token-type--active"
+                          : "")
                       }
                       onClick={() => setTokenType("PROJETO")}
                     >
@@ -114,7 +139,9 @@ export default function CriarTokenPage() {
                       type="button"
                       className={
                         "creator-token-type" +
-                        (tokenType === "COMUNIDADE" ? " creator-token-type--active" : "")
+                        (tokenType === "COMUNIDADE"
+                          ? " creator-token-type--active"
+                          : "")
                       }
                       onClick={() => setTokenType("COMUNIDADE")}
                     >
@@ -194,9 +221,10 @@ export default function CriarTokenPage() {
                 {/* Riscos */}
                 <div className="creator-risk-box">
                   <p>
-                    <strong>Sem romance:</strong> este token é um experimento especulativo de narrativa.
-                    Não é título de dívida, não é cota de fundo, não é produto financeiro regulado.
-                    Pode não ter utilidade prática e pode não valer nada amanhã.
+                    <strong>Sem romance:</strong> este token é um experimento
+                    especulativo de narrativa. Não é título de dívida, não é
+                    cota de fundo, não é produto financeiro regulado. Pode não
+                    ter utilidade prática e pode não valer nada amanhã.
                   </p>
 
                   <div className="creator-risk-checks">
@@ -207,8 +235,9 @@ export default function CriarTokenPage() {
                         onChange={(e) => setRiskNotInvestment(e.target.checked)}
                       />
                       <span>
-                        Eu entendo e declaro que este token <strong>não é investimento seguro</strong> nem
-                        produto financeiro regulado.
+                        Eu entendo e declaro que este token{" "}
+                        <strong>não é investimento seguro</strong> nem produto
+                        financeiro regulado.
                       </span>
                     </label>
 
@@ -219,8 +248,9 @@ export default function CriarTokenPage() {
                         onChange={(e) => setRiskCanZero(e.target.checked)}
                       />
                       <span>
-                        Eu entendo e declaro que o preço deste token pode <strong>ir a zero</strong> e que
-                        isso não é responsabilidade do 3ustaquio.
+                        Eu entendo e declaro que o preço deste token pode{" "}
+                        <strong>ir a zero</strong> e que isso não é
+                        responsabilidade do 3ustaquio.
                       </span>
                     </label>
 
@@ -231,7 +261,9 @@ export default function CriarTokenPage() {
                         onChange={(e) => setRiskCreatorRole(e.target.checked)}
                       />
                       <span>
-                        Eu entendo que sou <strong>criador de narrativa</strong>, não gerente de investimento.
+                        Eu entendo que sou{" "}
+                        <strong>criador de narrativa</strong>, não gerente de
+                        investimento.
                       </span>
                     </label>
                   </div>
@@ -240,7 +272,8 @@ export default function CriarTokenPage() {
                 <div className="creator-footer" style={{ marginTop: "16px" }}>
                   <div className="creator-footer-left">
                     <p className="creator-footer-hint">
-                      Nada será lançado sem você revisar e pagar a taxa. Esta etapa é só para desenhar o token.
+                      Nada será lançado sem você revisar e pagar a taxa. Esta
+                      etapa é só para desenhar o token.
                     </p>
                   </div>
                   <div className="creator-footer-right">
@@ -262,7 +295,9 @@ export default function CriarTokenPage() {
               <div className="creator-preview-card">
                 <div className="creator-preview-header">
                   <span className="creator-preview-pill">{typeLabel}</span>
-                  <span className="creator-preview-status">Risco alto · Especulação</span>
+                  <span className="creator-preview-status">
+                    Risco alto · Especulação
+                  </span>
                 </div>
 
                 <div className="creator-preview-main">
@@ -287,13 +322,16 @@ export default function CriarTokenPage() {
                   <div className="creator-preview-riskband">
                     <span className="creator-preview-riskdot" />
                     <span>
-                      Não é produto financeiro regulado. Preço pode ir a zero. Entre por conta e risco.
+                      Não é produto financeiro regulado. Preço pode ir a zero.
+                      Entre por conta e risco.
                     </span>
                   </div>
                 </div>
 
                 <div className="creator-preview-footer">
-                  <span className="creator-preview-link-label">Link da Arena (simulado)</span>
+                  <span className="creator-preview-link-label">
+                    Link da Arena (simulado)
+                  </span>
                   <span className="creator-preview-link">{tokenUrl}</span>
                 </div>
               </div>

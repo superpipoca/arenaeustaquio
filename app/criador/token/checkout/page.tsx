@@ -5,30 +5,125 @@ import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header3ustaquio from "../../../componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "../../../componentes/ui/layout/Footer3ustaquio";
+// import { supabaseClient } from "../../../lib/supabaseClient";
+import { SupabaseClient } from "@supabase/supabase-js";
+import { getOrCreateCreatorProfile } from "../../../lib/creatorProfile";
+
+const RISK_DISCLAIMER = `
+Este token é um experimento especulativo de narrativa.
+Não é investimento seguro, não é produto financeiro regulado, não tem garantia de retorno.
+Você pode perder 100% do valor colocado aqui. Ao usar o 3ustaquio, você declara que entende que isso é jogo de alto risco e age por conta própria.
+`.trim();
+
+function slugifyToken(ticker: string, tokenName: string): string {
+  const base = (ticker || tokenName || "token")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return base || "token";
+}
 
 export default function CheckoutTokenPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = SupabaseClient as any;
 
   const type = searchParams.get("type") || "TOKEN";
   const publicName = searchParams.get("publicName") || "Criador";
   const tokenName = searchParams.get("tokenName") || "Seu token";
-  const ticker = searchParams.get("ticker") || "TICKER";
+  const ticker = (searchParams.get("ticker") || "TICKER").toUpperCase();
   const headline = searchParams.get("headline") || "";
   const story = searchParams.get("story") || "";
 
   const [aceito, setAceito] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   const tokenUrl = `https://app.3ustaquio.com/token/${ticker.toLowerCase()}`;
 
-  const handleLaunch = () => {
-    const params = new URLSearchParams({
-      type,
-      publicName,
-      tokenName,
-      ticker,
-    });
-    router.push(`/criador/token/sucesso?${params.toString()}`);
+  const handleLaunch = async () => {
+    setErro(null);
+    setLoading(true);
+
+    try {
+      // garante user + creator
+      const { creatorId } = await getOrCreateCreatorProfile();
+
+      // pega coin_type_id associado a 'MEME'
+      // (por enquanto tratamos tudo como narrativa pura;
+      // depois você pode mapear para LASTREADA/COMUNIDADE por tipo)
+      const { data: coinType, error: coinTypeError } = await supabase
+        .from("coin_types")
+        .select("id, code")
+        .eq("code", "MEME")
+        .single();
+
+      if (coinTypeError || !coinType) {
+        throw new Error("Não foi possível localizar o tipo de moeda MEME.");
+      }
+
+      const slug = slugifyToken(ticker, tokenName);
+
+      const narrativeShort =
+        headline.trim().length > 0
+          ? headline.trim().slice(0, 240)
+          : `Token de narrativa criado por ${publicName} na plataforma 3ustaquio. Experimento especulativo de alto risco, sem promessa de retorno.`;
+
+      const tags: string[] = [
+        `tipo_criador:${type.toLowerCase()}`,
+        "origem:3ustaquio-ui",
+      ];
+
+      const { data: newCoin, error: insertError } = await supabase
+        .from("coins")
+        .insert({
+          slug,
+          symbol: ticker,
+          name: tokenName,
+          creator_id: creatorId,
+          coin_type_id: coinType.id,
+          status: "ACTIVE", // já nasce ativa na Arena
+          narrative_short: narrativeShort,
+          narrative_long: story || null,
+          risk_disclaimer: RISK_DISCLAIMER,
+          tags,
+        })
+        .select("id, slug, symbol, name")
+        .single();
+
+      if (insertError || !newCoin) {
+        console.error(insertError);
+        throw new Error("Erro ao salvar o token na base 3ustaquio.");
+      }
+
+      // Aqui daria para chamar init_coin_market_state via RPC
+      // se você já tiver pool_wallet + reservas configuradas.
+      // Exemplo (deixa comentado até ter estrutura pronta):
+      //
+      // await supabase.rpc("init_coin_market_state", {
+      //   p_coin_id: newCoin.id,
+      //   p_base_reserve: 1000,
+      //   p_coin_reserve: 1000,
+      // });
+
+      const params = new URLSearchParams({
+        tokenId: newCoin.id,
+        slug: newCoin.slug,
+        tokenName: newCoin.name,
+        ticker: newCoin.symbol,
+      });
+
+      router.push(`/criador/token/sucesso?${params.toString()}`);
+    } catch (err: any) {
+      console.error(err);
+      setErro(
+        err?.message ||
+          "Não foi possível lançar o token. Verifique sua sessão e tente novamente."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -48,7 +143,7 @@ export default function CheckoutTokenPage() {
           </header>
 
           <section className="creator-main">
-            {/* Esquerda – resumo */}
+            {/* Esquerda – resumo (igual ao que você já tinha) */}
             <div className="creator-form-side">
               <div className="creator-card">
                 <div className="section-label">Resumo do token</div>
@@ -87,7 +182,7 @@ export default function CheckoutTokenPage() {
                 </div>
 
                 <div className="creator-summary-block" style={{ marginTop: "10px" }}>
-                  <h3>Link da Arena (simulado)</h3>
+                  <h3>Link da Arena (exemplo visual)</h3>
                   <p className="creator-summary-url">{tokenUrl}</p>
                 </div>
               </div>
@@ -136,14 +231,25 @@ export default function CheckoutTokenPage() {
                   </label>
                 </div>
 
+                {erro && (
+                  <p
+                    className="cta-note"
+                    style={{ color: "var(--accent-primary)", marginTop: 8 }}
+                  >
+                    {erro}
+                  </p>
+                )}
+
                 <button
                   type="button"
                   className="btn-primary creator-nav-btn"
-                  disabled={!aceito}
+                  disabled={!aceito || loading}
                   onClick={handleLaunch}
                   style={{ marginTop: "14px" }}
                 >
-                  Entendo o risco e quero lançar meu token
+                  {loading
+                    ? "Lançando token..."
+                    : "Entendo o risco e quero lançar meu token"}
                 </button>
               </div>
             </aside>

@@ -1,4 +1,3 @@
-// app/criador/token/sucesso/page.tsx
 "use client";
 
 import React from "react";
@@ -11,10 +10,11 @@ export default function TokenSucessoPage() {
   const searchParams = useSearchParams();
 
   const tokenName = searchParams.get("tokenName") || "Seu token";
-  const ticker = searchParams.get("ticker") || "TICKER";
-  const publicName = searchParams.get("publicName") || "Criador";
+  const ticker = (searchParams.get("ticker") || "TICKER").toUpperCase();
+  const slug = searchParams.get("slug") || ticker.toLowerCase();
+  const tokenId = searchParams.get("tokenId") || "";
 
-  const tokenUrl = `https://app.3ustaquio.com/token/${ticker.toLowerCase()}`;
+  const tokenUrl = `https://app.3ustaquio.com/token/${slug}`;
 
   const shareText = `Lancei um token da minha comunidade no 3ustaquio.
 Não é investimento seguro, é jogo de narrativa de alto risco.
