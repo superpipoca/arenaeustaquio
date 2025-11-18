@@ -299,6 +299,7 @@
 import React from "react";
 import Header3ustaquio from "./componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "./componentes/ui/layout/Footer3ustaquio";
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -338,12 +339,16 @@ export default function HomePage() {
               </ul>
 
               <div className="hero-ctas-row">
-                <button type="button" className="btn-primary">
+                <div className="hero-ctas-row">
+                <Link href="/criador" className="btn-primary">
                   Quero criar meu primeiro token
-                </button>
-                <button type="button" className="btn-outline">
+                </Link>
+
+                <Link href="/criador/onboarding" className="btn">
                   Quero entender os riscos antes
-                </button>
+                </Link>
+              </div>
+
               </div>
             </div>
 

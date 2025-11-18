@@ -8,6 +8,11 @@ import Footer3ustaquio from "../../../componentes/ui/layout/Footer3ustaquio";
 
 type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
 
+// 💰 Taxa do criador usada na simulação (5%)
+const FEE_CREATOR_RATE = 0.05;
+// Volume padrão para simulação se o criador não preencher nada
+const DEFAULT_SIM_VOLUME = 10000; // R$ 10.000/dia (exemplo ilustrativo)
+
 export default function CriarTokenPage() {
   const router = useRouter();
 
@@ -17,11 +22,64 @@ export default function CriarTokenPage() {
   const [ticker, setTicker] = useState("");
   const [headline, setHeadline] = useState("");
   const [story, setStory] = useState("");
+
+  // 🔢 Economia do token
+  const [initialSupply, setInitialSupply] = useState(""); // quantidade total emitida
+  const [poolPercent, setPoolPercent] = useState(""); // % do supply que vai pra pool
+  const [faceValue, setFaceValue] = useState(""); // valor de face inicial
+
+  // 📊 Simulação de volume de trade
+  const [simVolumeDay, setSimVolumeDay] = useState("");
+
+  // ✅ Riscos obrigatórios
   const [riskNotInvestment, setRiskNotInvestment] = useState(false);
   const [riskCanZero, setRiskCanZero] = useState(false);
   const [riskCreatorRole, setRiskCreatorRole] = useState(false);
 
-  // ✅ deixa explicitamente boolean
+  // Normaliza string numérica (aceita vírgula e ponto, remove lixo)
+  const normalizeNumber = (raw: string) =>
+    raw.replace(/[^\d.,]/g, "").replace(",", ".");
+
+  const parsedInitialSupply = Number(normalizeNumber(initialSupply));
+  const parsedPoolPercent = Number(normalizeNumber(poolPercent));
+  const parsedFaceValue = Number(normalizeNumber(faceValue));
+  const parsedSimVolumeDay = Number(normalizeNumber(simVolumeDay));
+
+  const hasEconomics =
+    !Number.isNaN(parsedInitialSupply) &&
+    parsedInitialSupply > 0 &&
+    !Number.isNaN(parsedPoolPercent) &&
+    parsedPoolPercent > 0 &&
+    parsedPoolPercent <= 100 &&
+    !Number.isNaN(parsedFaceValue) &&
+    parsedFaceValue > 0;
+
+  // Tokens na pool e bag do criador
+  const tokensInPool =
+    hasEconomics && parsedInitialSupply && parsedPoolPercent
+      ? (parsedInitialSupply * parsedPoolPercent) / 100
+      : null;
+
+  const creatorBagTokens =
+    hasEconomics && tokensInPool !== null
+      ? parsedInitialSupply - tokensInPool
+      : null;
+
+  const estBaseLiquidity =
+    tokensInPool && !Number.isNaN(parsedFaceValue)
+      ? tokensInPool * parsedFaceValue
+      : null;
+
+  // 💸 Simulação de taxa do criador (5% sobre o volume diário)
+  const hasCustomVolume =
+    !Number.isNaN(parsedSimVolumeDay) && parsedSimVolumeDay > 0;
+  const baseVolumeForSim = hasCustomVolume
+    ? parsedSimVolumeDay
+    : DEFAULT_SIM_VOLUME;
+
+  const simFeesDay = baseVolumeForSim * FEE_CREATOR_RATE;
+  const simFeesMonth = simFeesDay * 30;
+
   const canContinue: boolean =
     tokenType !== "" &&
     publicName.trim().length >= 2 &&
@@ -29,12 +87,12 @@ export default function CriarTokenPage() {
     ticker.trim().length >= 2 &&
     headline.trim().length >= 20 &&
     story.trim().length >= 40 &&
+    hasEconomics &&
     riskNotInvestment &&
     riskCanZero &&
     riskCreatorRole;
 
   const handleContinue = () => {
-    // só por garantia e debug
     if (!canContinue) {
       console.warn("Tentou continuar sem atender os requisitos", {
         tokenType,
@@ -43,6 +101,9 @@ export default function CriarTokenPage() {
         tickerLen: ticker.trim().length,
         headlineLen: headline.trim().length,
         storyLen: story.trim().length,
+        parsedInitialSupply,
+        parsedPoolPercent,
+        parsedFaceValue,
         riskNotInvestment,
         riskCanZero,
         riskCreatorRole,
@@ -57,6 +118,9 @@ export default function CriarTokenPage() {
       ticker,
       headline,
       story,
+      initialSupply: parsedInitialSupply.toString(),
+      poolPercent: parsedPoolPercent.toString(),
+      faceValue: parsedFaceValue.toString(),
     });
 
     const href = `/criador/token/checkout?${params.toString()}`;
@@ -88,8 +152,9 @@ export default function CriarTokenPage() {
               Crie seu <span>token de narrativa</span>
             </h1>
             <p className="creator-subtitle">
-              Não é plano de aposentadoria, não é “investimento seguro”.
-              É um token especulativo da sua história. Você cria, a comunidade decide se entra no jogo.
+              Não é plano de aposentadoria, não é “investimento seguro”. É um
+              token especulativo da sua história. Você cria, a comunidade
+              decide se entra no jogo.
             </p>
           </header>
 
@@ -99,10 +164,11 @@ export default function CriarTokenPage() {
               <div className="creator-card">
                 <div className="section-label">Passo – Criar moeda</div>
                 <h2 className="section-title">
-                  Quem é você e qual é o símbolo desse jogo?
+                  Quem é você, como esse token nasce e onde você ganha no jogo?
                 </h2>
                 <p className="section-subtitle">
-                  Escolha o tipo de token, dê nome e conte a história. O resto é Arena.
+                  Aqui você define a narrativa e o modelo de lançamento. O
+                  resto é Arena: liquidez, hype e risco assumido.
                 </p>
 
                 {/* Tipo de token */}
@@ -162,7 +228,8 @@ export default function CriarTokenPage() {
                       placeholder="Ex: Brenel, Bar do Zé, Crew da Pista"
                     />
                     <p className="field-help">
-                      É o nome que a galera já reconhece. Nada de personagem aleatório.
+                      É o nome que a galera já reconhece. Nada de personagem
+                      aleatório.
                     </p>
                   </div>
 
@@ -202,7 +269,8 @@ export default function CriarTokenPage() {
                     placeholder="Token da nossa comunidade para brincar de mercado com a nossa história. Alto risco, zero promessa de retorno."
                   />
                   <p className="field-help">
-                    Frase que aparece no topo da página do token. Direta, sem vender milagre.
+                    Frase que aparece no topo da página do token. Direta, sem
+                    vender milagre.
                   </p>
                 </div>
 
@@ -216,6 +284,198 @@ export default function CriarTokenPage() {
                     onChange={(e) => setStory(e.target.value)}
                     placeholder="Explique quem é você/comunidade, por que esse token existe, o que as pessoas estão sinalizando ao comprar e por que isso é um experimento — não um plano de aposentadoria."
                   />
+                </div>
+
+                {/* ⚙️ Configuração econômica do lançamento */}
+                <div className="creator-field-group">
+                  <label className="field-label">
+                    Modelo de lançamento (travado depois de lançar)
+                  </label>
+                  <p className="field-help">
+                    Esses números definem como seu token entra na Arena.{" "}
+                    <strong>
+                      Depois de lançado, supply inicial, % da pool e valor de
+                      face não poderão ser alterados.
+                    </strong>
+                  </p>
+                </div>
+
+                <div className="creator-two-cols">
+                  <div className="creator-field-group">
+                    <label className="field-label">
+                      Quantidade total de tokens (supply inicial)
+                    </label>
+                    <input
+                      className="field-input"
+                      value={initialSupply}
+                      onChange={(e) =>
+                        setInitialSupply(
+                          e.target.value.replace(/[^\d.,]/g, "")
+                        )
+                      }
+                      placeholder="Ex: 1.000.000"
+                      inputMode="decimal"
+                    />
+                    <p className="field-help">
+                      Total de unidades que nascem no dia 0. Não é
+                      recomendação, é sua visão de jogo.
+                    </p>
+                  </div>
+
+                  <div className="creator-field-group">
+                    <label className="field-label">
+                      Valor de face no lançamento (por token)
+                    </label>
+                    <input
+                      className="field-input"
+                      value={faceValue}
+                      onChange={(e) =>
+                        setFaceValue(e.target.value.replace(/[^\d.,]/g, ""))
+                      }
+                      placeholder="Ex: 0,10 (em base interna)"
+                      inputMode="decimal"
+                    />
+                    <p className="field-help">
+                      Preço inicial de referência na moeda base interna (ex.:
+                      BRL interno). Depois disso, o mercado faz o resto.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="creator-field-group">
+                  <label className="field-label">
+                    % do supply que vai para o pool de lançamento
+                  </label>
+                  <input
+                    className="field-input"
+                    value={poolPercent}
+                    onChange={(e) =>
+                      setPoolPercent(e.target.value.replace(/[^\d.,]/g, ""))
+                    }
+                    placeholder="Ex: 20"
+                    inputMode="decimal"
+                  />
+                  <p className="field-help">
+                    Parte da moeda que entra direto na pool de liquidez
+                    inicial (AMM). O resto é sua bag fora da pool, sob sua
+                    responsabilidade. Configuração travada no lançamento.
+                  </p>
+                </div>
+
+                {/* 💹 Simulação de incentivos do criador */}
+                <div className="creator-field-group">
+                  <label className="field-label">
+                    Onde você pode capturar valor neste jogo (simulação)
+                  </label>
+                  <p className="field-help">
+                    O desenho é simples:
+                  </p>
+                  <ul className="list-check">
+                    <li>
+                      Você nasce com uma <strong>bag de tokens</strong> fora da
+                      pool, que pode vender se fizer sentido dentro da
+                      narrativa.
+                    </li>
+                    <li>
+                      Em cada compra e venda do seu token, existe uma{" "}
+                      <strong>taxa do criador de 5% sobre o volume da
+                      operação</strong> (simulação deste MVP; o real pode ser
+                      ajustado).
+                    </li>
+                  </ul>
+                  <p className="field-help">
+                    Abaixo é só matemática para você entender a ordem de
+                    grandeza. Não é promessa, não é projeção de ganho.
+                  </p>
+                </div>
+
+                <div className="creator-two-cols">
+                  <div className="creator-field-group">
+                    <label className="field-label">
+                      Volume diário de trade (simulação)
+                    </label>
+                    <input
+                      className="field-input"
+                      value={simVolumeDay}
+                      onChange={(e) =>
+                        setSimVolumeDay(
+                          e.target.value.replace(/[^\d.,]/g, "")
+                        )
+                      }
+                      placeholder="Ex: 5.000 (em base interna)"
+                      inputMode="decimal"
+                    />
+                    <p className="field-help">
+                      Compras + vendas somadas em 24h.{" "}
+                      {hasCustomVolume ? (
+                        <>Usando o valor que você digitou.</>
+                      ) : (
+                        <>
+                          Se você não preencher, simulamos com{" "}
+                          <strong>
+                            R${" "}
+                            {DEFAULT_SIM_VOLUME.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                            /dia
+                          </strong>
+                          .
+                        </>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="creator-field-group">
+                    <div className="creator-sim-box">
+                      <p className="field-label">
+                        Taxa do criador em <strong>5% por operação</strong>{" "}
+                        (simulação)
+                      </p>
+                      <p className="field-help">
+                        Se o seu token girasse{" "}
+                        <strong>
+                          R{"$ "}
+                          {baseVolumeForSim.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                          /dia
+                        </strong>{" "}
+                        em compras e vendas:
+                      </p>
+                      <ul className="list-check">
+                        <li>
+                          Você capturaria cerca de{" "}
+                          <strong>
+                            R{"$ "}
+                            {simFeesDay.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                            /dia
+                          </strong>{" "}
+                          em taxa do criador (5%).
+                        </li>
+                        <li>
+                          Mantido por 30 dias, isso daria{" "}
+                          <strong>
+                            R{"$ "}
+                            {simFeesMonth.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                            /mês
+                          </strong>{" "}
+                          — apenas como exemplo matemático.
+                        </li>
+                      </ul>
+                      <p className="field-help">
+                        O mercado é caótico: pode ter mais volume, menos volume
+                        ou nenhum. Aqui é só para enxergar a mecânica.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Riscos */}
@@ -232,7 +492,9 @@ export default function CriarTokenPage() {
                       <input
                         type="checkbox"
                         checked={riskNotInvestment}
-                        onChange={(e) => setRiskNotInvestment(e.target.checked)}
+                        onChange={(e) =>
+                          setRiskNotInvestment(e.target.checked)
+                        }
                       />
                       <span>
                         Eu entendo e declaro que este token{" "}
@@ -258,7 +520,9 @@ export default function CriarTokenPage() {
                       <input
                         type="checkbox"
                         checked={riskCreatorRole}
-                        onChange={(e) => setRiskCreatorRole(e.target.checked)}
+                        onChange={(e) =>
+                          setRiskCreatorRole(e.target.checked)
+                        }
                       />
                       <span>
                         Eu entendo que sou{" "}
@@ -269,11 +533,19 @@ export default function CriarTokenPage() {
                   </div>
                 </div>
 
+                <div className="warning-strip" style={{ marginTop: 16 }}>
+                  <strong>Linha dura do jogo:</strong> supply inicial, % na
+                  pool e valor de face são parâmetros imutáveis deste token
+                  depois do lançamento. Se quiser outro modelo econômico, crie
+                  outro token.
+                </div>
+
                 <div className="creator-footer" style={{ marginTop: "16px" }}>
                   <div className="creator-footer-left">
                     <p className="creator-footer-hint">
                       Nada será lançado sem você revisar e pagar a taxa. Esta
-                      etapa é só para desenhar o token.
+                      etapa é só para desenhar o token e o modelo de
+                      lançamento.
                     </p>
                   </div>
                   <div className="creator-footer-right">
@@ -325,6 +597,107 @@ export default function CriarTokenPage() {
                       Não é produto financeiro regulado. Preço pode ir a zero.
                       Entre por conta e risco.
                     </span>
+                  </div>
+
+                  {/* Mini-métricas do modelo de lançamento */}
+                  <div className="creator-preview-metrics">
+                    <div>
+                      <span className="metric-label">Supply inicial</span>
+                      <span className="metric-value">
+                        {!Number.isNaN(parsedInitialSupply) &&
+                        parsedInitialSupply > 0
+                          ? parsedInitialSupply.toLocaleString("pt-BR")
+                          : "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="metric-label">Pool de lançamento</span>
+                      <span className="metric-value">
+                        {!Number.isNaN(parsedPoolPercent) &&
+                        parsedPoolPercent > 0
+                          ? `${parsedPoolPercent}%${
+                              tokensInPool
+                                ? ` (${tokensInPool.toLocaleString(
+                                    "pt-BR"
+                                  )} tokens)`
+                                : ""
+                            }`
+                          : "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="metric-label">Valor de face</span>
+                      <span className="metric-value">
+                        {!Number.isNaN(parsedFaceValue) && parsedFaceValue > 0
+                          ? `R$ ${parsedFaceValue.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 8,
+                            })}`
+                          : "—"}
+                      </span>
+                    </div>
+                    {creatorBagTokens !== null && creatorBagTokens > 0 && (
+                      <div>
+                        <span className="metric-label">
+                          Bag do criador (fora da pool)
+                        </span>
+                        <span className="metric-value">
+                          {creatorBagTokens.toLocaleString("pt-BR")} tokens
+                        </span>
+                      </div>
+                    )}
+                    {creatorBagTokens &&
+                      creatorBagTokens > 0 &&
+                      !Number.isNaN(parsedFaceValue) &&
+                      parsedFaceValue > 0 && (
+                        <div>
+                          <span className="metric-label">
+                            Se vendesse toda a bag a valor de face
+                          </span>
+                          <span className="metric-value">
+                            R{"$ "}
+                            {(creatorBagTokens * parsedFaceValue).toLocaleString(
+                              "pt-BR",
+                              {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }
+                            )}{" "}
+                            <span className="metric-note">
+                              (hipotético, o mercado decide o preço)
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                    {estBaseLiquidity && (
+                      <div>
+                        <span className="metric-label">
+                          Liquidez inicial estimada (base)
+                        </span>
+                        <span className="metric-value">
+                          R{"$ "}
+                          {estBaseLiquidity.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    )}
+                    {simFeesDay && (
+                      <div>
+                        <span className="metric-label">
+                          Taxa do criador (5% sobre o volume simulado)
+                        </span>
+                        <span className="metric-value">
+                          ~ R{"$ "}
+                          {simFeesDay.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          / dia
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
