@@ -99,57 +99,41 @@ export default function CriarTokenPage() {
     riskCreatorRole;
 
   const handleContinue = () => {
-    if (!canContinue) {
-      console.warn("Tentou continuar sem atender os requisitos", {
-        tokenType,
-        publicNameLen: publicName.trim().length,
-        tokenNameLen: tokenName.trim().length,
-        tickerLen: ticker.trim().length,
-        headlineLen: headline.trim().length,
-        storyLen: story.trim().length,
-        parsedInitialSupply,
-        parsedPoolPercent,
-        parsedFaceValue,
-        riskNotInvestment,
-        riskCanZero,
-        riskCreatorRole,
-      });
-      return;
-    }
+  if (!canContinue) {
+    console.warn("Tentou continuar sem atender os requisitos", {
+      tokenType,
+      publicNameLen: publicName.trim().length,
+      tokenNameLen: tokenName.trim().length,
+      tickerLen: ticker.trim().length,
+      headlineLen: headline.trim().length,
+      storyLen: story.trim().length,
+      parsedInitialSupply,
+      parsedPoolPercent,
+      parsedFaceValue,
+      riskNotInvestment,
+      riskCanZero,
+      riskCreatorRole,
+    });
+    return;
+  }
 
-    const params = new URLSearchParams();
+  const params = new URLSearchParams();
+  params.set("type", tokenType);
+  params.set("publicName", publicName);
+  params.set("tokenName", tokenName);
+  params.set("ticker", ticker);
+  params.set("headline", headline);
+  params.set("story", story);
 
-      params.set("type", tokenType);
-      params.set("publicName", publicName);
-      params.set("tokenName", tokenName);
-      params.set("ticker", ticker);
-      params.set("headline", headline);
-      params.set("story", story);
+  // 🔥 Importante: usar totalSupply aqui
+  params.set("totalSupply", parsedInitialSupply.toString());
+  params.set("poolPercent", parsedPoolPercent.toString());
+  params.set("faceValue", parsedFaceValue.toString());
 
-      params.set("totalSupply", String(parsedInitialSupply)); // 👈 MESMO NOME
-      params.set("poolPercent", String(parsedPoolPercent));
-      params.set("faceValue", String(parsedFaceValue));
-
-
-    // params.set("type", tokenType);                 // "PESSOA" | "PROJETO" | ...
-    // params.set("publicName", publicName);
-    // params.set("tokenName", tokenName);
-    // params.set("ticker", ticker);
-    // params.set("headline", headline);
-    // params.set("story", story);
-
-    // // 👇 nomes alinhados com o checkout + launchTokenAfterPix
-    // params.set("totalSupply", String(parsedInitialSupply));
-    // params.set("poolPercent", String(parsedPoolPercent));
-    // params.set("faceValue", String(parsedFaceValue));
-
-    const href = `/criador/token/checkout?${params.toString()}`;
-    console.log("[NOVO] Navegando para checkout com params:", Object.fromEntries(params));
-    router.push(href);
-  };
-
-
-
+  const href = `/criador/token/checkout?${params.toString()}`;
+  console.log("Navegando para checkout:", href);
+  router.push(href);
+};
 
 
   const typeLabel =

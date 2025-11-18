@@ -469,12 +469,24 @@ import Header3ustaquio from "@/app/componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "@/app/componentes/ui/layout/Footer3ustaquio";
 import { supabase } from "../../../lib/supabaseClient";
 import { createPixCharge } from "../../../lib/pixPayment";
-// import { launchTokenAfterPix } from "../../../lib/launchTokenAfterPix";
 import { launchTokenAfterPix } from "@/app/lib/launchToken";
 
 type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
 
 const LAUNCH_FEE = 19.9;
+
+// 🔢 Helper pra parsear números vindos da URL
+function parseNumberParam(raw: string | null): number {
+  if (!raw) return NaN;
+  const normalized = raw
+    .trim()
+    .replace(/\s/g, "")
+    // se em algum momento vier "1.000.000" ou "1,000,000"
+    .replace(/\./g, "")
+    .replace(/,/g, ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : NaN;
+}
 
 export default function CriadorTokenCheckoutPage() {
   const router = useRouter();
@@ -488,14 +500,16 @@ export default function CriadorTokenCheckoutPage() {
   const headline = search.get("headline") || "";
   const story = search.get("story") || "";
 
-  // 👇 AGORA LEMOS supply/pool/face DA QUERY
-  const totalSupplyParam = search.get("totalSupply");   // 👈 NOME TEM QUE SER "totalSupply"
+  // 👇 supply/pool/face vindos da URL
+  // tenta primeiro "totalSupply"; se não tiver, aceita "initialSupply" pra não quebrar fluxo antigo
+  const totalSupplyParam =
+    search.get("totalSupply") ?? search.get("initialSupply");
   const poolPercentParam = search.get("poolPercent");
   const faceValueParam = search.get("faceValue");
 
-  const totalSupply = totalSupplyParam ? Number(totalSupplyParam) : NaN;
-  const poolPercent = poolPercentParam ? Number(poolPercentParam) : NaN;
-  const faceValue = faceValueParam ? Number(faceValueParam) : NaN;
+  const totalSupply = parseNumberParam(totalSupplyParam);
+  const poolPercent = parseNumberParam(poolPercentParam);
+  const faceValue = parseNumberParam(faceValueParam);
 
   const supplyConfigValid =
     Number.isFinite(totalSupply) &&
@@ -518,7 +532,6 @@ export default function CriadorTokenCheckoutPage() {
     faceValue,
     supplyConfigValid,
   });
-
 
   console.log("[CHECKOUT] Params lidos da URL:", {
     tokenType,
@@ -577,10 +590,10 @@ export default function CriadorTokenCheckoutPage() {
     tokenType === "PESSOA"
       ? "Token de Pessoa"
       : tokenType === "PROJETO"
-        ? "Token de Projeto"
-        : tokenType === "COMUNIDADE"
-          ? "Token de Comunidade"
-          : "Token de Narrativa";
+      ? "Token de Projeto"
+      : tokenType === "COMUNIDADE"
+      ? "Token de Comunidade"
+      : "Token de Narrativa";
 
   const tokenUrl = `https://app.3ustaquio.com/token/${(ticker || "TOKEN")
     .toLowerCase()
@@ -644,7 +657,7 @@ export default function CriadorTokenCheckoutPage() {
       console.error("Erro ao gerar PIX:", err);
       setPixError(
         err?.message ||
-        "Não foi possível gerar o PIX. Tente novamente em alguns instantes."
+          "Não foi possível gerar o PIX. Tente novamente em alguns instantes."
       );
     } finally {
       setGenerating(false);
@@ -664,72 +677,6 @@ export default function CriadorTokenCheckoutPage() {
       .catch((err) => console.error("Erro ao copiar PIX:", err));
   };
 
-  // const handleFinishLaunch = async () => {
-  //   if (!pixData) {
-  //     setLaunchError(
-  //       "Os dados do PIX não foram encontrados. Gere o QR Code novamente."
-  //     );
-  //     return;
-  //   }
-
-  //   if (!totalSupply || !poolPercent || !faceValue) {
-  //     console.error(
-  //       "[CHECKOUT] Configuração de supply/pool/face inválida no checkout",
-  //       { totalSupply, poolPercent, faceValue }
-  //     );
-  //     setLaunchError(
-  //       "Configuração de supply/pool/face não encontrada. Volte e revise os dados do token."
-  //     );
-  //     return;
-  //   }
-
-  //   try {
-  //     setLaunching(true);
-  //     setLaunchError(null);
-
-  //     console.log("[CHECKOUT] Chamando launchTokenAfterPix com:", {
-  //       tokenType,
-  //       publicName,
-  //       tokenName,
-  //       ticker,
-  //       headline,
-  //       story,
-  //       totalSupply,
-  //       poolPercent,
-  //       faceValue,
-  //     });
-
-  //     const result = await launchTokenAfterPix({
-  //       tokenType,
-  //       publicName,
-  //       tokenName,
-  //       ticker,
-  //       headline,
-  //       story,
-  //       totalSupply,
-  //       poolPercent,
-  //       faceValue,
-  //       pixData,
-  //     });
-
-  //     console.log("[CHECKOUT] Token criado com sucesso:", result);
-
-  //     if (result?.slug) {
-  //       router.push(`/token/${result.slug}`);
-  //     } else {
-  //       router.push("/criador/dashboard");
-  //     }
-  //   } catch (err: any) {
-  //     console.error("[CHECKOUT] Erro ao lançar token:", err);
-  //     setLaunchError(
-  //       err?.message ||
-  //       "Não foi possível finalizar o lançamento. Tente novamente em alguns instantes."
-  //     );
-  //   } finally {
-  //     setLaunching(false);
-  //   }
-  // };
-
   const handleFinishLaunch = async () => {
     if (!pixData) {
       setLaunchError("Gere e pague o PIX antes de lançar o token.");
@@ -737,11 +684,14 @@ export default function CriadorTokenCheckoutPage() {
     }
 
     if (!supplyConfigValid) {
-      console.warn("[CHECKOUT] Configuração de supply/pool/face inválida no checkout", {
-        totalSupply,
-        poolPercent,
-        faceValue,
-      });
+      console.warn(
+        "[CHECKOUT] Configuração de supply/pool/face inválida no checkout",
+        {
+          totalSupply,
+          poolPercent,
+          faceValue,
+        }
+      );
       setLaunchError(
         "Configuração de supply/pool/face não encontrada. Volte e revise os dados do token."
       );
@@ -751,6 +701,18 @@ export default function CriadorTokenCheckoutPage() {
     try {
       setLaunching(true);
       setLaunchError(null);
+
+      console.log("[CHECKOUT] Chamando launchTokenAfterPix com:", {
+        tokenType,
+        publicName,
+        tokenName,
+        ticker,
+        headline,
+        story,
+        totalSupply,
+        poolPercent,
+        faceValue,
+      });
 
       const { slug } = await launchTokenAfterPix({
         tokenType,
@@ -765,18 +727,18 @@ export default function CriadorTokenCheckoutPage() {
         pixData,
       });
 
+      console.log("[CHECKOUT] Token lançado, redirecionando para slug:", slug);
       router.push(`/token/${slug}?novo=1`);
     } catch (err: any) {
       console.error("[CHECKOUT] Erro ao lançar token depois do PIX:", err);
       setLaunchError(
         err?.message ||
-        "Erro ao lançar o token depois do pagamento. Tente novamente."
+          "Erro ao lançar o token depois do pagamento. Tente novamente."
       );
     } finally {
       setLaunching(false);
     }
   };
-
 
   // tenta achar imagem do QR Code via URL
   const qrCodeImageUrl =
@@ -795,9 +757,9 @@ export default function CriadorTokenCheckoutPage() {
               Revise seu <span>token</span> e gere o PIX
             </h1>
             <p className="creator-subtitle">
-              Antes de entrar na Arena, você paga a taxa de criação.
-              Nada aqui é promessa de retorno. É o preço para ligar a máquina
-              da narrativa.
+              Antes de entrar na Arena, você paga a taxa de criação. Nada aqui
+              é promessa de retorno. É o preço para ligar a máquina da
+              narrativa.
             </p>
           </header>
 
@@ -838,24 +800,28 @@ export default function CriadorTokenCheckoutPage() {
                   </p>
                   <p>
                     <strong>Supply total:</strong>{" "}
-                    {totalSupply
+                    {Number.isFinite(totalSupply)
                       ? totalSupply.toLocaleString("pt-BR")
                       : "—"}
                   </p>
                   <p>
                     <strong>Pool de lançamento:</strong>{" "}
-                    {poolPercent ? `${poolPercent}%` : "—"}
+                    {Number.isFinite(poolPercent)
+                      ? `${poolPercent}%`
+                      : "—"}
                   </p>
                   <p>
                     <strong>Valor de face inicial:</strong>{" "}
-                    {faceValue ? `R$ ${faceValue.toFixed(2)}` : "—"}
+                    {Number.isFinite(faceValue)
+                      ? `R$ ${faceValue.toFixed(2)}`
+                      : "—"}
                   </p>
                 </div>
 
                 <div className="warning-strip" style={{ marginTop: 16 }}>
                   <strong>Lembra:</strong> este token não é investimento
-                  seguro, não é produto financeiro regulado e pode valer
-                  zero. Se isso incomoda, é melhor não lançar.
+                  seguro, não é produto financeiro regulado e pode valer zero.
+                  Se isso incomoda, é melhor não lançar.
                 </div>
               </div>
             </div>
@@ -955,8 +921,8 @@ export default function CriadorTokenCheckoutPage() {
                     </h2>
                     <p className="section-subtitle">
                       Use o QR Code ou o código copia-e-cola no seu app de
-                      banco. Depois do pagamento, clique em “Já paguei,
-                      seguir para a Arena”.
+                      banco. Depois do pagamento, clique em “Já paguei, seguir
+                      para a Arena”.
                     </p>
 
                     <div className="pix-box">
@@ -1058,8 +1024,8 @@ export default function CriadorTokenCheckoutPage() {
                   <div className="creator-preview-riskband">
                     <span className="creator-preview-riskdot" />
                     <span>
-                      Não é produto financeiro regulado. Preço pode ir a
-                      zero. Entre por conta e risco.
+                      Não é produto financeiro regulado. Preço pode ir a zero.
+                      Entre por conta e risco.
                     </span>
                   </div>
                 </div>
