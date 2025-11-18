@@ -99,41 +99,47 @@ export default function CriarTokenPage() {
     riskCreatorRole;
 
   const handleContinue = () => {
-  if (!canContinue) {
-    console.warn("Tentou continuar sem atender os requisitos", {
+    // Loga tudo pra inspecionar o motivo do bloqueio
+    console.log("[CRIAR TOKEN] Tentando continuar com estado atual:", {
       tokenType,
-      publicNameLen: publicName.trim().length,
-      tokenNameLen: tokenName.trim().length,
-      tickerLen: ticker.trim().length,
-      headlineLen: headline.trim().length,
-      storyLen: story.trim().length,
+      publicName,
+      tokenName,
+      ticker,
+      headline,
+      story,
       parsedInitialSupply,
       parsedPoolPercent,
       parsedFaceValue,
       riskNotInvestment,
       riskCanZero,
       riskCreatorRole,
+      canContinue,
     });
-    return;
-  }
 
-  const params = new URLSearchParams();
-  params.set("type", tokenType);
-  params.set("publicName", publicName);
-  params.set("tokenName", tokenName);
-  params.set("ticker", ticker);
-  params.set("headline", headline);
-  params.set("story", story);
+    // Condição explícita
+    if (!canContinue) {
+      alert(
+        "Você ainda não preencheu todos os campos obrigatórios ou marcou todos os riscos."
+      );
+      return;
+    }
 
-  // 🔥 Importante: usar totalSupply aqui
-  params.set("totalSupply", parsedInitialSupply.toString());
-  params.set("poolPercent", parsedPoolPercent.toString());
-  params.set("faceValue", parsedFaceValue.toString());
+    const params = new URLSearchParams();
+    params.set("type", tokenType);
+    params.set("publicName", publicName);
+    params.set("tokenName", tokenName);
+    params.set("ticker", ticker);
+    params.set("headline", headline);
+    params.set("story", story);
+    params.set("totalSupply", parsedInitialSupply.toString());
+    params.set("poolPercent", parsedPoolPercent.toString());
+    params.set("faceValue", parsedFaceValue.toString());
 
-  const href = `/criador/token/checkout?${params.toString()}`;
-  console.log("Navegando para checkout:", href);
-  router.push(href);
-};
+    const href = `/criador/token/checkout?${params.toString()}`;
+    console.log("[CRIAR TOKEN] Navegando para checkout:", href);
+    router.push(href);
+  };
+
 
 
   const typeLabel =
@@ -590,11 +596,18 @@ export default function CriarTokenPage() {
                     </p>
                   </div>
                   <div className="creator-footer-right">
+                    
                     <button
                       type="button"
-                      className="btn-primary creator-nav-btn"
+                      className={`btn-primary creator-nav-btn ${!canContinue ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                       disabled={!canContinue}
                       onClick={handleContinue}
+                      title={
+                        canContinue
+                          ? "Avançar para o checkout"
+                          : "Preencha todos os campos e marque as caixas de risco"
+                      }
                     >
                       Continuar para pagamento & lançamento
                     </button>
