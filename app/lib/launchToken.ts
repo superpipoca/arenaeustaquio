@@ -621,7 +621,7 @@ export async function launchTokenAfterPix(input: LaunchTokenInput) {
       name: input.tokenName,
       creator_id: creatorId,
       coin_type_id: coinType.id,
-      status: "ACTIVE", // se quiser draft, trocar para 'DRAFT'
+      status: "DRAFT", // se quiser draft, trocar para 'DRAFT'
       narrative_short: input.headline,
       narrative_long: input.story,
       risk_disclaimer: RISK_DISCLAIMER,

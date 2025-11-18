@@ -151,7 +151,7 @@ export default function CriarTokenPage() {
           ? "Token de Comunidade"
           : "Token de Narrativa";
 
-  const tokenUrl = `https://app.3ustaquio.com/token/${(ticker || "TOKEN")
+  const tokenUrl = `https://app.3ustaquio.com/criador/token/${(ticker || "TOKEN")
     .toLowerCase()
     .replace(/\s+/g, "")}`;
 

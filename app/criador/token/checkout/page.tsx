@@ -595,7 +595,7 @@ export default function CriadorTokenCheckoutPage() {
       ? "Token de Comunidade"
       : "Token de Narrativa";
 
-  const tokenUrl = `https://app.3ustaquio.com/token/${(ticker || "TOKEN")
+  const tokenUrl = `https://app.3ustaquio.com/criador/token/${(ticker || "TOKEN")
     .toLowerCase()
     .replace(/\s+/g, "")}`;
 
@@ -728,7 +728,7 @@ export default function CriadorTokenCheckoutPage() {
       });
 
       console.log("[CHECKOUT] Token lançado, redirecionando para slug:", slug);
-      router.push(`/token/${slug}?novo=1`);
+      router.push(`/criador/token/${slug}?novo=1`);
     } catch (err: any) {
       console.error("[CHECKOUT] Erro ao lançar token depois do PIX:", err);
       setLaunchError(

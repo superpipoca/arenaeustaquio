@@ -1909,3 +1909,71 @@ select.field-input:focus {
   width: 100%;        /* responsivo */
   height: auto;
 }
+
+/* Container do toggle */
+.auth-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0; /* as bordas se encostam */
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  margin: 16px 0 24px;
+}
+
+/* Botões do toggle */
+.auth-toggle-btn {
+  position: relative;
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.16s ease-out,
+    color 0.16s ease-out,
+    box-shadow 0.16s ease-out,
+    transform 0.08s ease-out;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* Estado ativo (aba selecionada) */
+.auth-toggle-btn--active {
+  background: var(--accent-primary, #ff0055);
+  color: #050508;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 10px 25px rgba(255, 0, 85, 0.3);
+}
+
+/* Hover em desktop */
+.auth-toggle-btn:not(.auth-toggle-btn--active):hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Foco acessível */
+.auth-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent-primary, #ff0055);
+  outline-offset: 2px;
+}
+
+/* Mobile: ocupa largura inteira e centraliza */
+@media (max-width: 640px) {
+  .auth-toggle {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .auth-toggle-btn {
+    font-size: 0.8rem;
+    padding: 8px 10px;
+  }
+}
