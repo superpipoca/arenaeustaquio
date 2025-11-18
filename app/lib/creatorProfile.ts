@@ -1,103 +1,140 @@
+// app/lib/creatorProfile.ts
 "use client";
 
-// import { supabaseClient } from "./supabaseClient";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "./supabaseClient";
 
-export type CreatorProfile = {
-  userId: string;
-  creatorId: string;
-};
-
-function buildHandleFromName(nameOrEmail: string | null): string {
-  const base =
-    (nameOrEmail || "criador")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "") || "criador";
-
-  return `@${base.slice(0, 15)}`;
-}
-
-export async function getOrCreateCreatorProfile(): Promise<CreatorProfile> {
-  const supabase = SupabaseClient as any;
-
-  // 1) Usuário autenticado (auth.users)
+/**
+ * Garante que exista um registro em `public.users` e `public.creators`
+ * para o usuário logado.
+ *
+ * - Se não estiver logado -> lança erro "NOT_AUTH".
+ * - Se já existir user/creator -> só retorna os ids.
+ * - Se não existir -> cria user (role CREATOR) + creator.
+ */
+export async function getOrCreateCreatorProfile() {
+  // 1. Pega usuário autenticado
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError) throw authError;
-  if (!user) throw new Error("Usuário não autenticado");
+  if (authError || !user) {
+    throw new Error("NOT_AUTH");
+  }
 
-  const authUserId = user.id as string;
-  const email = (user.email as string | null) ?? null;
-  const meta = (user.user_metadata as any) || {};
-  const metaName =
-    meta.full_name || meta.name || meta.username || null;
+  const authUserId = user.id;
 
-  // 2) Linha em public.users
-  let { data: dbUser, error: dbUserError } = await supabase
+  // 2. Garante que existe linha em public.users
+  const { data: existingUsers, error: userSelectError } = await supabase
     .from("users")
-    .select("id, role, display_name")
+    .select("id, role, username")
     .eq("auth_user_id", authUserId)
-    .maybeSingle();
+    .limit(1);
 
-  if (dbUserError) throw dbUserError;
+  if (userSelectError) {
+    console.error("Erro ao buscar user:", userSelectError);
+    throw userSelectError;
+  }
 
-  if (!dbUser) {
+  let userId: string;
+
+  if (existingUsers && existingUsers.length > 0) {
+    const existing = existingUsers[0];
+    userId = existing.id;
+
+    // Se não for CREATOR, promove
+    if (existing.role !== "CREATOR") {
+      const { error: updateRoleError } = await supabase
+        .from("users")
+        .update({
+          role: "CREATOR",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (updateRoleError) {
+        console.error("Erro ao atualizar role do user:", updateRoleError);
+        throw updateRoleError;
+      }
+    }
+  } else {
+    // Cria novo user com role CREATOR
+    const suggestedUsername =
+      (user.user_metadata as any)?.username ||
+      user.email?.split("@")[0] ||
+      `user_${authUserId.slice(0, 6)}`;
+
     const displayName =
-      metaName ||
-      email?.split("@")[0] ||
-      "Criador sem nome";
+      (user.user_metadata as any)?.full_name || user.email || suggestedUsername;
 
-    const { data: newUser, error: insertUserError } = await supabase
+    const avatarUrl = (user.user_metadata as any)?.avatar_url ?? null;
+
+    const { data: insertedUser, error: insertUserError } = await supabase
       .from("users")
       .insert({
         auth_user_id: authUserId,
         role: "CREATOR",
+        username: suggestedUsername,
         display_name: displayName,
-      })
-      .select("id, role, display_name")
-      .single();
-
-    if (insertUserError) throw insertUserError;
-    dbUser = newUser;
-  } else if (dbUser.role !== "CREATOR") {
-    // garante que o cara é CREATOR na jornada do criador
-    const { error: updateRoleError } = await supabase
-      .from("users")
-      .update({ role: "CREATOR" })
-      .eq("id", dbUser.id);
-
-    if (updateRoleError) throw updateRoleError;
-  }
-
-  // 3) Linha em public.creators
-  let { data: creator, error: creatorError } = await supabase
-    .from("creators")
-    .select("id")
-    .eq("user_id", dbUser.id)
-    .maybeSingle();
-
-  if (creatorError) throw creatorError;
-
-  if (!creator) {
-    const handle = buildHandleFromName(dbUser.display_name || email);
-    const { data: newCreator, error: newCreatorError } = await supabase
-      .from("creators")
-      .insert({
-        user_id: dbUser.id,
-        handle,
+        avatar_url: avatarUrl,
       })
       .select("id")
       .single();
 
-    if (newCreatorError) throw newCreatorError;
-    creator = newCreator;
+    if (insertUserError) {
+      console.error("Erro ao criar user:", insertUserError);
+      throw insertUserError;
+    }
+
+    userId = insertedUser.id;
   }
 
-  return {
-    userId: dbUser.id,
-    creatorId: creator.id,
-  };
+  // 3. Garante que existe linha em public.creators
+  const { data: existingCreators, error: creatorsSelectError } = await supabase
+    .from("creators")
+    .select("id, handle")
+    .eq("user_id", userId)
+    .limit(1);
+
+  if (creatorsSelectError) {
+    console.error("Erro ao buscar creator:", creatorsSelectError);
+    throw creatorsSelectError;
+  }
+
+  let creatorId: string;
+
+  if (existingCreators && existingCreators.length > 0) {
+    creatorId = existingCreators[0].id;
+  } else {
+    // Gera handle @username simples
+    const baseHandle =
+      (user.user_metadata as any)?.username ||
+      user.email?.split("@")[0] ||
+      `user_${authUserId.slice(0, 6)}`;
+
+    const normalized = baseHandle
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "")
+      .slice(0, 20);
+
+    const handle = `@${normalized || `user_${authUserId.slice(0, 6)}`}`;
+
+    const { data: insertedCreator, error: insertCreatorError } = await supabase
+      .from("creators")
+      .insert({
+        user_id: userId,
+        handle,
+      })
+      .select("id, handle")
+      .single();
+
+    if (insertCreatorError) {
+      console.error("Erro ao criar creator:", insertCreatorError);
+      throw insertCreatorError;
+    }
+
+    creatorId = insertedCreator.id;
+  }
+
+  return { userId, creatorId };
 }

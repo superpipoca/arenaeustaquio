@@ -5,12 +5,10 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Header3ustaquio from "../../componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "../../componentes/ui/layout/Footer3ustaquio";
-// import { supabaseClient } from "../../lib/supabaseClient";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "../../lib/supabaseClient"; // ✅ usa o client real
 
 export default function CriadorLoginPage() {
   const router = useRouter();
-  const supabase = SupabaseClient as any;
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -20,6 +18,12 @@ export default function CriadorLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
+
+    if (!email.trim() || !senha.trim()) {
+      setErro("Preencha e-mail e senha.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -29,14 +33,15 @@ export default function CriadorLoginPage() {
       });
 
       if (error) {
+        console.error("Erro Supabase login:", error);
         setErro(error.message || "Não foi possível entrar.");
         return;
       }
 
-      // depois do login, mandamos pro onboarding (onde criamos user+creator)
+      // Depois do login, manda pro onboarding do criador
       router.push("/criador/onboarding");
     } catch (err: any) {
-      console.error(err);
+      console.error("Erro inesperado ao tentar logar:", err);
       setErro("Erro inesperado ao tentar logar.");
     } finally {
       setLoading(false);
