@@ -231,7 +231,7 @@ export default function CriarTokenPage() {
                       className="field-input"
                       value={publicName}
                       onChange={(e) => setPublicName(e.target.value)}
-                      placeholder="Ex: Brenel, Bar do Zé, Crew da Pista"
+                      placeholder="Ex: Joaquim, Bar do Zé, Crew da Pista"
                     />
                     <p className="field-help">
                       É o nome que a galera já reconhece. Nada de personagem
