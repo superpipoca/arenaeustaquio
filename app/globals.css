@@ -1972,7 +1972,7 @@ select.field-input:focus {
     justify-content: space-between;
   }
 
-  .auth-toggle-btn {
+  .auth-toggle-btn { 
     font-size: 0.8rem;
     padding: 8px 10px;
   }
