@@ -10,7 +10,9 @@ export default function Header3ustaquio() {
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
+  // Carrega usuário logado
   useEffect(() => {
     let cancelled = false;
 
@@ -40,12 +42,25 @@ export default function Header3ustaquio() {
     };
   }, []);
 
+  // Detecta layout responsivo (mobile)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768); // breakpoint simples
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const handleGoToLogin = () => {
     router.push("/criador/login");
   };
 
   const handleGoToArena = () => {
-    // Ajusta esse path se sua Arena estiver em outro lugar
     router.push("/criador/dashboard");
   };
 
@@ -61,9 +76,7 @@ export default function Header3ustaquio() {
     }
   };
 
-  const displayName = userEmail
-    ? userEmail.split("@")[0]
-    : "Criador";
+  const displayName = userEmail ? userEmail.split("@")[0] : "Criador";
 
   return (
     <header className="site-header">
@@ -80,38 +93,45 @@ export default function Header3ustaquio() {
           </div>
         </div>
 
-        {/* Navegação principal */}
-        <nav className="header-nav" aria-label="Navegação principal">
-          <ul className="header-nav-list">
-            <li className="header-nav-item">
-              <a href="#plataforma" className="header-nav-link">
-                Plataforma
-              </a>
-            </li>
-            <li className="header-nav-item">
-              <a href="#jogo" className="header-nav-link">
-                Como funciona o jogo
-              </a>
-            </li>
-            <li className="header-nav-item">
-              <a href="#tokens" className="header-nav-link">
-                Tipos de tokens
-              </a>
-            </li>
-            <li className="header-nav-item">
-              <a href="#risco" className="header-nav-link">
-                Risco & ética
-              </a>
-            </li>
-          </ul>
-        </nav>
+        {/* Navegação principal
+            - Some quando usuário estiver logado
+            - Some também no mobile para deixar só logo + CTA */}
+        {!userEmail && !isMobile && (
+          <nav className="header-nav" aria-label="Navegação principal">
+            <ul className="header-nav-list">
+              <li className="header-nav-item">
+                <a href="#plataforma" className="header-nav-link">
+                  Plataforma
+                </a>
+              </li>
+              <li className="header-nav-item">
+                <a href="#jogo" className="header-nav-link">
+                  Como funciona o jogo
+                </a>
+              </li>
+              <li className="header-nav-item">
+                <a href="#tokens" className="header-nav-link">
+                  Tipos de tokens
+                </a>
+              </li>
+              <li className="header-nav-item">
+                <a href="#risco" className="header-nav-link">
+                  Risco & ética
+                </a>
+              </li>
+            </ul>
+          </nav>
+        )}
 
-        {/* Lado direito: login vs usuário logado */}
+        {/* Lado direito */}
         <div className="header-right">
           {loadingUser ? (
-            // Carregando sessão – opcionalmente pode por um skeleton
             <></>
           ) : userEmail ? (
+            // ==========================
+            // ESTADO: USUÁRIO LOGADO
+            // Só logo (já está à esquerda), nome, notificações e sair
+            // ==========================
             <>
               <div className="header-user-info">
                 <span className="header-user-greeting">Olá,</span>
@@ -120,10 +140,11 @@ export default function Header3ustaquio() {
 
               <button
                 type="button"
-                className="header-cta"
-                onClick={handleGoToArena}
+                className="header-notification-btn"
+                aria-label="Notificações"
               >
-                Ir para a Arena
+                {/* Pode trocar por ícone SVG depois */}
+                🔔
               </button>
 
               <button
@@ -135,12 +156,18 @@ export default function Header3ustaquio() {
               </button>
             </>
           ) : (
+            // ==========================
+            // ESTADO: NÃO LOGADO
+            // Desktop: Entrar na Arena
+            // Mobile (responsivo): Ir para a Arena
+            // e sem navegação, só logo + botão
+            // ==========================
             <button
               type="button"
               className="header-cta"
-              onClick={handleGoToLogin}
+              onClick={isMobile ? handleGoToArena : handleGoToLogin}
             >
-              Entrar na Arena
+              {isMobile ? "Ir para a Arena" : "Entrar na Arena"}
             </button>
           )}
         </div>
