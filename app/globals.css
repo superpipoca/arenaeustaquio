@@ -2091,3 +2091,389 @@ select.field-input:focus {
   }
 }
 
+/* === ARENA DO TRADER – RANKING === */
+
+.arena-screen {
+  padding: 32px 0 48px;
+}
+
+.arena-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* Hero / cabeçalho da arena */
+
+.arena-header {
+  padding: 24px 0 24px;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.arena-kicker {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--accent-link);
+  margin-bottom: 8px;
+}
+
+.arena-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 32px;
+  line-height: 1.15;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+
+.arena-title span {
+  color: var(--accent-hype);
+}
+
+.arena-subtitle {
+  font-size: 15px;
+  color: var(--text-muted);
+  max-width: 720px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.arena-subtitle--small {
+  font-size: 14px;
+  max-width: 680px;
+}
+
+.arena-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+
+.arena-badge {
+  flex: 1;
+  min-width: 220px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: #101010;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.arena-badge strong {
+  color: var(--text-main);
+}
+
+/* Toolbar: ordenação e filtro */
+
+.arena-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 0 8px;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.arena-toolbar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.arena-sort-toggle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.arena-sort-option {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.08s ease;
+}
+
+.arena-sort-option--active {
+  background: var(--accent-link);
+  color: #050505;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 8px 22px rgba(0, 255, 255, 0.25);
+}
+
+.arena-sort-option:not(.arena-sort-option--active):hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+}
+
+.arena-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arena-filter-pill {
+  border-radius: 999px;
+  border: 1px dashed var(--border-subtle);
+  background: #0b0b0b;
+  padding: 5px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    background 0.16s ease,
+    transform 0.08s ease;
+}
+
+.arena-filter-pill--active {
+  border-color: var(--accent-hype);
+  color: var(--accent-hype);
+  background: rgba(255, 221, 0, 0.08);
+  box-shadow: 0 0 0 1px rgba(255, 221, 0, 0.3);
+}
+
+.arena-filter-pill:not(.arena-filter-pill--active):hover {
+  border-color: var(--accent-link);
+  color: var(--accent-link);
+}
+
+/* Legendinha de risco */
+
+.arena-toolbar-right {
+  max-width: 320px;
+}
+
+.arena-risk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.arena-risk-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.arena-risk-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.arena-risk-dot--hype {
+  background: var(--accent-hype);
+  border-color: var(--accent-hype);
+}
+
+.arena-risk-dot--bolha {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.arena-risk-dot--frio {
+  background: #555;
+  border-color: #777;
+}
+
+.arena-risk-label {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.arena-toolbar-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Lista / ranking */
+
+.arena-list-section {
+  padding: 24px 0 10px;
+}
+
+.arena-list-header {
+  margin-bottom: 12px;
+}
+
+.arena-list-title {
+  font-family: "Oswald", sans-serif;
+  font-size: 22px;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+}
+
+.arena-list-caption {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.arena-empty {
+  border-radius: 14px;
+  border: 1px dashed var(--border-subtle);
+  background: #101010;
+  padding: 16px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Cards reaproveitando estilos de creator */
+
+.arena-token-list {
+  margin-top: 10px;
+}
+
+.arena-token-card {
+  transition:
+    border-color 0.16s ease,
+    transform 0.12s ease,
+    box-shadow 0.16s ease;
+}
+
+.arena-token-card:hover {
+  border-color: var(--accent-link);
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.18),
+    0 14px 32px rgba(0, 0, 0, 0.8);
+}
+
+.arena-token-story {
+  font-size: 13px;
+  color: var(--text-main);
+  margin: 6px 0 10px;
+}
+
+.arena-metric-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.arena-value-pos {
+  color: var(--accent-hype);
+}
+
+.arena-value-neg {
+  color: var(--accent-primary);
+}
+
+.arena-risk-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.arena-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.arena-primary-action {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.arena-secondary-action {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+/* Aviso final */
+
+.arena-warning-strip {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--accent-primary);
+  background: rgba(255, 0, 85, 0.06);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.arena-warning-strip strong {
+  color: var(--accent-primary);
+}
+
+/* Responsivo */
+
+@media (max-width: 900px) {
+  .arena-screen {
+    padding-top: 20px;
+  }
+
+  .arena-header {
+    padding-top: 12px;
+  }
+
+  .arena-title {
+    font-size: 26px;
+  }
+
+  .arena-subtitle,
+  .arena-subtitle--small {
+    font-size: 14px;
+  }
+
+  .arena-toolbar {
+    flex-direction: column;
+  }
+
+  .arena-toolbar-right {
+    max-width: none;
+  }
+
+  .arena-sort-toggle {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .arena-sort-option {
+    font-size: 11px;
+  }
+
+  .arena-actions-row {
+    flex-direction: column;
+  }
+
+  .arena-primary-action,
+  .arena-secondary-action {
+    width: 100%;
+    text-align: center;
+  }
+}
