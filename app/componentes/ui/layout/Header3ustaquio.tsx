@@ -47,7 +47,7 @@ export default function Header3ustaquio() {
     if (typeof window === "undefined") return;
 
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 768); // breakpoint simples
+      setIsMobile(window.innerWidth < 768);
     };
 
     handleResize();
@@ -93,9 +93,7 @@ export default function Header3ustaquio() {
           </div>
         </div>
 
-        {/* Navegação principal
-            - Some quando usuário estiver logado
-            - Some também no mobile para deixar só logo + CTA */}
+        {/* Navegação principal – só quando não logado e não for mobile */}
         {!userEmail && !isMobile && (
           <nav className="header-nav" aria-label="Navegação principal">
             <ul className="header-nav-list">
@@ -128,10 +126,7 @@ export default function Header3ustaquio() {
           {loadingUser ? (
             <></>
           ) : userEmail ? (
-            // ==========================
-            // ESTADO: USUÁRIO LOGADO
-            // Só logo (já está à esquerda), nome, notificações e sair
-            // ==========================
+            // ===== USUÁRIO LOGADO =====
             <>
               <div className="header-user-info">
                 <span className="header-user-greeting">Olá,</span>
@@ -143,8 +138,15 @@ export default function Header3ustaquio() {
                 className="header-notification-btn"
                 aria-label="Notificações"
               >
-                {/* Pode trocar por ícone SVG depois */}
                 🔔
+              </button>
+
+              <button
+                type="button"
+                className="header-cta"
+                onClick={handleGoToArena}
+              >
+                Dashboard
               </button>
 
               <button
@@ -156,12 +158,7 @@ export default function Header3ustaquio() {
               </button>
             </>
           ) : (
-            // ==========================
-            // ESTADO: NÃO LOGADO
-            // Desktop: Entrar na Arena
-            // Mobile (responsivo): Ir para a Arena
-            // e sem navegação, só logo + botão
-            // ==========================
+            // ===== NÃO LOGADO =====
             <button
               type="button"
               className="header-cta"
