@@ -2265,3 +2265,808 @@ begin
   return v_trade;
 end;
 $$;
+
+
+-- =========================================================
+-- HARD MODE: Circuit Breaker Config + Trading Halt State
+-- =========================================================
+
+alter table public.coin_market_state
+  add column if not exists max_impact_pct     numeric(10,4) not null default 18.0, -- impacto máximo permitido (%)
+  add column if not exists max_slippage_pct   numeric(10,4) not null default 12.0, -- slippage máximo permitido (%)
+  add column if not exists halt_cooldown_sec  integer not null default 300,        -- tempo mínimo de pause quando breaker estoura
+
+  add column if not exists is_halted          boolean not null default false,
+  add column if not exists halted_until       timestamptz,
+  add column if not exists halt_reason        text,
+  add column if not exists halts_24h          integer not null default 0,
+  add column if not exists halts_updated_at   timestamptz;
+
+
+-- =========================================================
+-- HARD MODE: Trading Halts Log
+-- =========================================================
+
+create table if not exists public.coin_trading_halts (
+  id               uuid primary key default gen_random_uuid(),
+  coin_id          uuid not null references public.coins (id) on delete cascade,
+  triggered_by     uuid references public.trades (id), -- trade que disparou (se houver)
+  impact_pct       numeric(10,4),
+  slippage_pct     numeric(10,4),
+  max_impact_pct   numeric(10,4),
+  max_slippage_pct numeric(10,4),
+  reason           text not null, -- "IMPACT_BREAKER" | "SLIPPAGE_BREAKER" | manual etc
+  halted_until     timestamptz,
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists idx_coin_trading_halts_coin_time
+  on public.coin_trading_halts (coin_id, created_at desc);
+
+-- =========================================================
+-- FUNÇÃO: pause_trading (hard halt)
+-- =========================================================
+create or replace function public.pause_trading(
+  p_coin_id        uuid,
+  p_reason         text,
+  p_minutes        integer default null,
+  p_impact_pct     numeric default null,
+  p_slippage_pct   numeric default null,
+  p_trigger_trade  uuid default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_market public.coin_market_state%rowtype;
+  v_until  timestamptz;
+  v_minutes integer;
+begin
+  select * into v_market
+  from public.coin_market_state
+  where coin_id = p_coin_id
+  for update;
+
+  if not found then
+    raise exception 'coin_market_state not found for coin %', p_coin_id;
+  end if;
+
+  v_minutes := coalesce(p_minutes, ceil(v_market.halt_cooldown_sec / 60.0)::int);
+  v_until := now() + make_interval(mins => v_minutes);
+
+  update public.coin_market_state
+  set is_halted        = true,
+      halted_until     = v_until,
+      halt_reason      = p_reason,
+      halts_24h        = case
+                           when v_market.halts_updated_at is null
+                             or v_market.halts_updated_at < now() - interval '24 hours'
+                           then 1
+                           else v_market.halts_24h + 1
+                         end,
+      halts_updated_at = now(),
+      updated_at       = now()
+  where coin_id = p_coin_id;
+
+  insert into public.coin_trading_halts (
+    coin_id, triggered_by,
+    impact_pct, slippage_pct,
+    max_impact_pct, max_slippage_pct,
+    reason, halted_until
+  )
+  values (
+    p_coin_id, p_trigger_trade,
+    p_impact_pct, p_slippage_pct,
+    v_market.max_impact_pct, v_market.max_slippage_pct,
+    p_reason, v_until
+  );
+
+  -- Post WARNING no feed da moeda (estilo "bolsa pausada")
+  insert into public.posts (
+    coin_id, kind, content, is_system, created_at
+  ) values (
+    p_coin_id,
+    'WARNING',
+    format(
+      '⚠️ Mercado pausado (%s). Impacto=%s%%, Slippage=%s%%. Volta prevista: %s. Isso é arena, não é parque.',
+      p_reason,
+      coalesce(round(p_impact_pct,2)::text,'n/a'),
+      coalesce(round(p_slippage_pct,2)::text,'n/a'),
+      to_char(v_until, 'YYYY-MM-DD HH24:MI:SS')
+    ),
+    true,
+    now()
+  );
+
+end;
+$$;
+
+
+-- =========================================================
+-- FUNÇÃO: resume_trading
+-- =========================================================
+create or replace function public.resume_trading(
+  p_coin_id uuid,
+  p_reason  text default 'MANUAL_RESUME'
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.coin_market_state
+  set is_halted      = false,
+      halted_until   = null,
+      halt_reason    = null,
+      updated_at     = now()
+  where coin_id = p_coin_id;
+
+  insert into public.posts (
+    coin_id, kind, content, is_system, created_at
+  ) values (
+    p_coin_id,
+    'SYSTEM',
+    format('✅ Mercado reaberto (%s). Volatilidade volta a valer. Jogo segue.', p_reason),
+    true,
+    now()
+  );
+end;
+$$;
+
+
+create or replace function public.place_limit_order(
+  p_coin_id uuid,
+  p_wallet_id uuid,
+  p_side trade_side,
+  p_price_limit numeric,
+  p_amount_base numeric default null,
+  p_amount_coin numeric default null
+) returns public.orders
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_market public.coin_market_state%rowtype;
+  v_order  public.orders%rowtype;
+begin
+  select * into v_market
+  from public.coin_market_state
+  where coin_id = p_coin_id;
+
+  if not found then
+    raise exception 'coin_market_state not found';
+  end if;
+
+  insert into public.orders (
+    user_wallet_id, coin_id, side, type,
+    price_limit, amount_base, amount_coin
+  ) values (
+    p_wallet_id, p_coin_id, p_side, 'LIMIT',
+    p_price_limit, p_amount_base, p_amount_coin
+  )
+  returning * into v_order;
+
+  -- execução imediata se preço já passou no limite
+  if p_side = 'BUY' and v_market.price_current <= p_price_limit then
+    perform public.swap_buy(p_coin_id, p_wallet_id, p_amount_base, 0);
+    update public.orders
+      set status='FILLED', updated_at=now()
+      where id=v_order.id
+      returning * into v_order;
+
+  elsif p_side='SELL' and v_market.price_current >= p_price_limit then
+    perform public.swap_sell(p_coin_id, p_wallet_id, p_amount_coin, 0);
+    update public.orders
+      set status='FILLED', updated_at=now()
+      where id=v_order.id
+      returning * into v_order;
+  end if;
+
+  return v_order;
+end;
+$$;
+
+-- =========================================================
+-- FUNÇÃO: check_circuit_breaker (hard) - FIX
+-- Estoura => pause_trading + exception
+-- =========================================================
+create or replace function public.check_circuit_breaker(
+  p_coin_id       uuid,
+  p_impact_pct    numeric,
+  p_slippage_pct  numeric,
+  p_trigger_trade uuid default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_market public.coin_market_state%rowtype;
+  v_reason text;
+begin
+  select * into v_market
+  from public.coin_market_state
+  where coin_id = p_coin_id
+  for update;
+
+  if not found then
+    raise exception 'coin_market_state not found for coin %', p_coin_id;
+  end if;
+
+  -- se já está halted e ainda não passou, bloqueia
+  if v_market.is_halted
+     and v_market.halted_until is not null
+     and v_market.halted_until > now()
+  then
+    raise exception 'market halted until % (reason: %)',
+      v_market.halted_until, coalesce(v_market.halt_reason,'UNKNOWN');
+  end if;
+
+  if p_impact_pct >= v_market.max_impact_pct then
+    v_reason := 'IMPACT_BREAKER';
+  elsif p_slippage_pct >= v_market.max_slippage_pct then
+    v_reason := 'SLIPPAGE_BREAKER';
+  end if;
+
+  if v_reason is not null then
+    perform public.pause_trading(
+      p_coin_id,
+      v_reason,
+      null,
+      p_impact_pct,
+      p_slippage_pct,
+      p_trigger_trade
+    );
+
+    -- usa format pra não ter treta com %% no RAISE
+    raise exception using
+      message = format(
+        'circuit breaker triggered (%s): impact=%.4f%%, slippage=%.4f%%',
+        v_reason, p_impact_pct, p_slippage_pct
+      );
+  end if;
+end;
+$$;
+
+
+
+-- =========================================================
+-- MIGRAÇÃO HARD: garante user_wallet_id
+-- =========================================================
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'orders'
+  ) then
+
+    -- caso antigo: wallet_id -> user_wallet_id
+    if exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'orders'
+        and column_name = 'wallet_id'
+    )
+    and not exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'orders'
+        and column_name = 'user_wallet_id'
+    ) then
+      alter table public.orders rename column wallet_id to user_wallet_id;
+    end if;
+
+    -- se ainda não existe, cria a coluna
+    if not exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'orders'
+        and column_name = 'user_wallet_id'
+    ) then
+      alter table public.orders
+        add column user_wallet_id uuid references public.wallets(id) on delete cascade;
+    end if;
+
+  end if;
+end $$;
+
+-- =========================================================
+-- RECRIA ÍNDICES (drop + create)
+-- =========================================================
+drop index if exists public.idx_orders_open_coin;
+drop index if exists public.idx_orders_open_wallet;
+drop index if exists public.idx_orders_book_price;
+
+create index if not exists idx_orders_open_coin
+  on public.orders (coin_id, status, created_at)
+  where status = 'OPEN';
+
+create index if not exists idx_orders_open_wallet
+  on public.orders (user_wallet_id, status, created_at)
+  where status = 'OPEN';
+
+create index if not exists idx_orders_book_price
+  on public.orders (coin_id, side, price_limit, created_at)
+  where status = 'OPEN' and type = 'LIMIT';
+
+-- depois que preencher user_wallet_id em todas as linhas:
+alter table public.orders
+  alter column user_wallet_id set not null;
+
+
+-- =========================================================
+-- ORDERS (book) - tipos + tabela + constraints hard
+-- =========================================================
+
+-- ENUM: order_type
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'order_type') then
+    create type public.order_type as enum ('MARKET','LIMIT');
+  end if;
+end $$;
+
+-- ENUM: order_status
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'order_status') then
+    create type public.order_status as enum ('OPEN','FILLED','CANCELLED');
+  end if;
+end $$;
+
+-- Tabela orders
+create table if not exists public.orders (
+  id              uuid primary key default gen_random_uuid(),
+  user_wallet_id  uuid not null references public.wallets(id) on delete cascade,
+  coin_id         uuid not null references public.coins(id) on delete cascade,
+
+  side            trade_side not null,                 -- BUY / SELL
+  type            order_type not null default 'LIMIT', -- MARKET / LIMIT
+
+  price_limit     numeric(30,8),  -- obrigatório em LIMIT
+  amount_base     numeric(30,8),  -- BUY usa base
+  amount_coin     numeric(30,8),  -- SELL usa coin
+
+  status          order_status not null default 'OPEN',
+  filled_trade_id uuid references public.trades(id),
+
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+
+  -- ==========================
+  -- Constraints HARD
+  -- ==========================
+
+  -- valores sempre positivos quando existirem
+  constraint orders_amount_base_positive
+    check (amount_base is null or amount_base > 0),
+
+  constraint orders_amount_coin_positive
+    check (amount_coin is null or amount_coin > 0),
+
+  constraint orders_price_limit_positive
+    check (price_limit is null or price_limit > 0),
+
+  -- LIMIT exige price_limit; MARKET não pode ter price_limit
+  constraint orders_type_price_rule
+    check (
+      (type = 'LIMIT'  and price_limit is not null)
+      or
+      (type = 'MARKET' and price_limit is null)
+    ),
+
+  -- BUY precisa amount_base e NÃO precisa amount_coin
+  -- SELL precisa amount_coin e NÃO precisa amount_base
+  constraint orders_side_amount_rule
+    check (
+      (side = 'BUY'  and amount_base is not null and amount_coin is null)
+      or
+      (side = 'SELL' and amount_coin is not null and amount_base is null)
+    )
+);
+
+-- =========================================================
+-- Índices (book / matching)
+-- =========================================================
+
+-- open orders por moeda (matching engine)
+create index if not exists idx_orders_open_coin
+  on public.orders (coin_id, status, created_at)
+  where status = 'OPEN';
+
+-- open orders por wallet (minha fila)
+create index if not exists idx_orders_open_wallet
+  on public.orders (user_wallet_id, status, created_at)
+  where status = 'OPEN';
+
+-- book por preço (para LIMIT)
+create index if not exists idx_orders_book_price
+  on public.orders (coin_id, side, price_limit, created_at)
+  where status = 'OPEN' and type = 'LIMIT';
+
+
+-- =========================================================
+-- HARDEN ORDERS: remaining + filled
+-- =========================================================
+alter table public.orders
+  add column if not exists amount_base_remaining numeric(30,8),
+  add column if not exists amount_coin_remaining numeric(30,8),
+  add column if not exists filled_base numeric(30,8) not null default 0,
+  add column if not exists filled_coin numeric(30,8) not null default 0;
+
+-- backfill p/ ordens antigas OPEN
+update public.orders
+set amount_base_remaining = coalesce(amount_base_remaining, amount_base),
+    amount_coin_remaining = coalesce(amount_coin_remaining, amount_coin)
+where status = 'OPEN';
+
+-- =========================================================
+-- ORDER FILLS (trade tape por ordem)
+-- =========================================================
+create table if not exists public.order_fills (
+  id             uuid primary key default gen_random_uuid(),
+  order_id       uuid not null references public.orders(id) on delete cascade,
+  trade_id       uuid not null references public.trades(id) on delete cascade,
+  maker_order_id uuid not null references public.orders(id),
+  taker_order_id uuid not null references public.orders(id),
+  amount_coin    numeric(30,8) not null,
+  amount_base    numeric(30,8) not null,
+  price          numeric(30,8) not null,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists idx_order_fills_order
+  on public.order_fills (order_id, created_at desc);
+
+create index if not exists idx_order_fills_trade
+  on public.order_fills (trade_id);
+
+
+-- =========================================================
+-- FUNÇÃO: upsert_candle_1m
+-- =========================================================
+create or replace function public.upsert_candle_1m(
+  p_coin_id      uuid,
+  p_bucket_time  timestamptz,
+  p_price        numeric,
+  p_volume_base  numeric,
+  p_volume_coin  numeric
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.coin_candles_1m (
+    coin_id, bucket_time,
+    open_price, high_price, low_price, close_price,
+    volume_base, volume_coin, trades_count,
+    created_at, updated_at
+  ) values (
+    p_coin_id, p_bucket_time,
+    p_price, p_price, p_price, p_price,
+    p_volume_base, p_volume_coin, 1,
+    now(), now()
+  )
+  on conflict (coin_id, bucket_time) do update
+  set high_price   = greatest(public.coin_candles_1m.high_price, excluded.high_price),
+      low_price    = least(public.coin_candles_1m.low_price, excluded.low_price),
+      close_price  = excluded.close_price,
+      volume_base  = public.coin_candles_1m.volume_base + excluded.volume_base,
+      volume_coin  = public.coin_candles_1m.volume_coin + excluded.volume_coin,
+      trades_count = public.coin_candles_1m.trades_count + 1,
+      updated_at   = now();
+end;
+$$;
+
+-- =========================================================
+-- FUNÇÃO: execute_order_fill (CLOB hard)
+-- Move saldos, cria trade, fees, market_state e candle 1m.
+-- =========================================================
+create or replace function public.execute_order_fill(
+  p_coin_id            uuid,
+  p_buyer_wallet_id    uuid,
+  p_seller_wallet_id   uuid,
+  p_amount_coin        numeric,
+  p_price              numeric,
+  p_taker_order_id     uuid,
+  p_maker_order_id     uuid
+) returns public.trades
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_coin public.coins%rowtype;
+
+  v_buyer_wallet  public.wallets%rowtype;
+  v_seller_wallet public.wallets%rowtype;
+
+  v_platform_wallet public.wallets%rowtype;
+  v_creator_wallet  public.wallets%rowtype;
+
+  v_fee_platform_rate numeric := 0.0010; -- 0.10% hard CLOB
+  v_fee_creator_rate  numeric := 0.0010; -- 0.10%
+
+  v_amount_base numeric;
+  v_fee_platform numeric;
+  v_fee_creator  numeric;
+  v_amount_base_net numeric;
+
+  v_seller_balance numeric;
+
+  v_trade public.trades%rowtype;
+
+  v_bucket_time timestamptz := date_trunc('minute', now());
+begin
+  if p_amount_coin <= 0 then
+    raise exception 'amount_coin must be > 0';
+  end if;
+  if p_price <= 0 then
+    raise exception 'price must be > 0';
+  end if;
+
+  v_amount_base := round(p_amount_coin * p_price, 8);
+
+  -- lock coin
+  select * into v_coin
+  from public.coins
+  where id = p_coin_id;
+
+  if not found then
+    raise exception 'coin not found';
+  end if;
+  if v_coin.status <> 'ACTIVE' then
+    raise exception 'coin must be ACTIVE to trade';
+  end if;
+
+  -- lock wallets
+  select * into v_buyer_wallet
+  from public.wallets where id = p_buyer_wallet_id for update;
+
+  select * into v_seller_wallet
+  from public.wallets where id = p_seller_wallet_id for update;
+
+  if v_buyer_wallet.balance_base < v_amount_base then
+    raise exception 'insufficient base in buyer wallet';
+  end if;
+
+  select balance_available into v_seller_balance
+  from public.wallet_balances
+  where wallet_id = p_seller_wallet_id
+    and coin_id   = p_coin_id
+  for update;
+
+  if not found or v_seller_balance < p_amount_coin then
+    raise exception 'insufficient coin in seller wallet';
+  end if;
+
+  -- platform treasury
+  select * into v_platform_wallet
+  from public.wallets
+  where wallet_type='PLATFORM_TREASURY'
+    and is_active
+  order by created_at
+  limit 1
+  for update;
+
+  if not found then
+    raise exception 'platform treasury wallet not configured';
+  end if;
+
+  -- creator treasury / user wallet
+  select w.* into v_creator_wallet
+  from public.wallets w
+  join public.users u on u.id = w.user_id
+  join public.creators c on c.user_id = u.id
+  where c.id = v_coin.creator_id
+    and w.is_active
+    and w.wallet_type in ('CREATOR_TREASURY','USER')
+  order by case when w.wallet_type='CREATOR_TREASURY' then 0 else 1 end,
+           w.created_at
+  limit 1
+  for update;
+
+  if not found then
+    raise exception 'creator wallet not found for coin';
+  end if;
+
+  -- fees
+  v_fee_platform := round(v_amount_base * v_fee_platform_rate, 8);
+  v_fee_creator  := round(v_amount_base * v_fee_creator_rate, 8);
+  v_amount_base_net := v_amount_base - v_fee_platform - v_fee_creator;
+
+  if v_amount_base_net <= 0 then
+    raise exception 'amount_base_net <= 0 after fees';
+  end if;
+
+  -- move base
+  update public.wallets
+  set balance_base = balance_base - v_amount_base,
+      updated_at = now()
+  where id = p_buyer_wallet_id;
+
+  update public.wallets
+  set balance_base = balance_base + v_amount_base_net,
+      updated_at = now()
+  where id = p_seller_wallet_id;
+
+  update public.wallets
+  set balance_base = balance_base + v_fee_platform,
+      updated_at = now()
+  where id = v_platform_wallet.id;
+
+  update public.wallets
+  set balance_base = balance_base + v_fee_creator,
+      updated_at = now()
+  where id = v_creator_wallet.id;
+
+  -- move coin
+  update public.wallet_balances
+  set balance_available = balance_available - p_amount_coin,
+      updated_at = now()
+  where wallet_id = p_seller_wallet_id
+    and coin_id   = p_coin_id;
+
+  insert into public.wallet_balances (wallet_id, coin_id, balance_available, balance_locked, updated_at)
+  values (p_buyer_wallet_id, p_coin_id, p_amount_coin, 0, now())
+  on conflict (wallet_id, coin_id) do update
+    set balance_available = public.wallet_balances.balance_available + excluded.balance_available,
+        updated_at = now();
+
+  -- trade row
+  insert into public.trades (
+    coin_id,
+    buyer_wallet_id,
+    seller_wallet_id,
+    side, -- lado do taker (ordem iniciadora)
+    amount_coin,
+    amount_base,
+    price_effective,
+    fee_total_base,
+    status,
+    executed_at,
+    created_at
+  )
+  values (
+    p_coin_id,
+    p_buyer_wallet_id,
+    p_seller_wallet_id,
+    (select side from public.orders where id = p_taker_order_id),
+    p_amount_coin,
+    v_amount_base,
+    p_price,
+    v_fee_platform + v_fee_creator,
+    'EXECUTED',
+    now(),
+    now()
+  )
+  returning * into v_trade;
+
+  -- fees ledger
+  insert into public.trade_fees (trade_id, kind, target_user_id, amount_base)
+  values
+    (v_trade.id, 'PLATFORM', null, v_fee_platform),
+    (v_trade.id, 'CREATOR',  v_creator_wallet.user_id, v_fee_creator);
+
+  -- market_state: last price + volumes
+  update public.coin_market_state
+  set price_current   = p_price,
+      volume_24h_base = volume_24h_base + v_amount_base,
+      volume_24h_coin = volume_24h_coin + p_amount_coin,
+      trades_24h      = trades_24h + 1,
+      last_trade_at   = now(),
+      updated_at      = now()
+  where coin_id = p_coin_id;
+
+  -- candle 1m
+  perform public.upsert_candle_1m(
+    p_coin_id,
+    v_bucket_time,
+    p_price,
+    v_amount_base,
+    p_amount_coin
+  );
+
+  return v_trade;
+end;
+$$;
+
+
+do $$
+begin
+  -- tabela existe?
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'coin_candles_1m'
+  ) then
+
+    -- se NÃO tem bucket_time...
+    if not exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'coin_candles_1m'
+        and column_name = 'bucket_time'
+    ) then
+
+      -- tenta renomear bucket_date -> bucket_time
+      if exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'coin_candles_1m'
+          and column_name = 'bucket_date'
+      ) then
+        alter table public.coin_candles_1m
+          rename column bucket_date to bucket_time;
+
+      -- tenta renomear bucket_ts -> bucket_time
+      elsif exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'coin_candles_1m'
+          and column_name = 'bucket_ts'
+      ) then
+        alter table public.coin_candles_1m
+          rename column bucket_ts to bucket_time;
+
+      else
+        -- não achou coluna equivalente → cria bucket_time nova
+        alter table public.coin_candles_1m
+          add column bucket_time timestamptz;
+
+        -- backfill: usa created_at como proxy (ajusta por minuto)
+        update public.coin_candles_1m
+        set bucket_time = date_trunc('minute', created_at)
+        where bucket_time is null;
+
+        -- agora vira not null
+        alter table public.coin_candles_1m
+          alter column bucket_time set not null;
+      end if;
+    end if;
+
+    -- garante PK no padrão (coin_id, bucket_time)
+    alter table public.coin_candles_1m
+      drop constraint if exists coin_candles_1m_pkey;
+
+    alter table public.coin_candles_1m
+      add primary key (coin_id, bucket_time);
+
+  else
+    -- tabela não existe → cria do zero
+    create table public.coin_candles_1m (
+      coin_id      uuid not null references public.coins (id) on delete cascade,
+      bucket_time  timestamptz not null, -- date_trunc('minute', ts)
+
+      open_price   numeric(30,8) not null,
+      high_price   numeric(30,8) not null,
+      low_price    numeric(30,8) not null,
+      close_price  numeric(30,8) not null,
+
+      volume_base  numeric(30,8) not null default 0,
+      volume_coin  numeric(30,8) not null default 0,
+      trades_count integer not null default 0,
+
+      created_at   timestamptz not null default now(),
+      updated_at   timestamptz not null default now(),
+
+      primary key (coin_id, bucket_time)
+    );
+  end if;
+end$$;
+
+-- índice no padrão hard
+create index if not exists idx_coin_candles_1m_coin_time
+  on public.coin_candles_1m (coin_id, bucket_time desc);
