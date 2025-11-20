@@ -3618,3 +3618,77 @@ where status in ('OPEN','PARTIAL')
   and type = 'LIMIT'
   and price_limit is not null
 group by coin_id, side, price_limit;
+
+
+--Cria a carteira da corretora para receber as comissões :-)
+insert into public.wallets (
+  wallet_type,
+  label,
+  provider,
+  balance_base,
+  is_active
+) values (
+  'PLATFORM_TREASURY',
+  'Tesouraria da Plataforma',
+  'INTERNAL',
+  0,
+  true
+);
+
+drop function if exists public.check_circuit_breaker(uuid, numeric, numeric);
+drop function if exists public.check_circuit_breaker(uuid, numeric, numeric, uuid);
+
+create or replace function public.check_circuit_breaker(
+  p_coin_id       uuid,
+  p_impact_pct    numeric,
+  p_slippage_pct  numeric,
+  p_trigger_trade uuid default null
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_market public.coin_market_state%rowtype;
+  v_reason text;
+begin
+  select * into v_market
+  from public.coin_market_state
+  where coin_id = p_coin_id
+  for update;
+
+  if not found then
+    raise exception 'coin_market_state not found for coin %', p_coin_id;
+  end if;
+
+  if v_market.is_halted
+     and v_market.halted_until is not null
+     and v_market.halted_until > now() then
+    raise exception 'market halted until % (reason: %)',
+      v_market.halted_until,
+      coalesce(v_market.halt_reason,'UNKNOWN');
+  end if;
+
+  v_reason := null;
+
+  if p_impact_pct >= v_market.max_impact_pct then
+    v_reason := 'IMPACT_BREAKER';
+  elsif p_slippage_pct >= v_market.max_slippage_pct then
+    v_reason := 'SLIPPAGE_BREAKER';
+  end if;
+
+  if v_reason is not null then
+    perform public.pause_trading(
+      p_coin_id,
+      v_reason,
+      null,
+      p_impact_pct,
+      p_slippage_pct,
+      p_trigger_trade
+    );
+
+    raise exception 'circuit breaker triggered (%): impact=% slippage=%',
+      v_reason, p_impact_pct, p_slippage_pct;
+  end if;
+end;
+$$;
