@@ -1,5 +1,7 @@
 -- 3ustaquio – Schema V1 + AMM V1 (CORRIGIDO)
 -- Ordem ajustada: coins vem antes de wallet_balances
+-- SCRIPT INICIAL, PARA CRIAR O CENÁRIO PRIMÁRIO, NÃO USAR PÓS CRIAÇÃO DO CENÁRIO
+-- PODE APAGAR DADOS IMPORTANTES.
 
 -- =========================================================
 -- Extensões
