@@ -3070,3 +3070,551 @@ end$$;
 -- índice no padrão hard
 create index if not exists idx_coin_candles_1m_coin_time
   on public.coin_candles_1m (coin_id, bucket_time desc);
+
+
+
+-- =========================================================
+-- ENUMs de Orders / Fills (hard)
+-- =========================================================
+do $$
+begin
+  create type public.order_type as enum ('MARKET','LIMIT');
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type public.order_status as enum ('OPEN','PARTIAL','FILLED','CANCELLED');
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type public.fill_role as enum ('MAKER','TAKER');
+exception when duplicate_object then null;
+end $$;
+
+
+-- =========================================================
+-- ORDERS (Order Book)
+-- BUY  => amount_base obrigatório
+-- SELL => amount_coin obrigatório
+-- LIMIT => price_limit obrigatório
+-- MARKET => price_limit deve ser NULL (a função converte internamente)
+-- =========================================================
+create table if not exists public.orders (
+  id                uuid primary key default gen_random_uuid(),
+  user_wallet_id    uuid not null references public.wallets(id),
+  coin_id           uuid not null references public.coins(id),
+
+  side              trade_side not null,           -- BUY / SELL
+  type              public.order_type not null default 'LIMIT',
+  price_limit       numeric(30,8),                -- obrigatório em LIMIT
+
+  amount_base       numeric(30,8),                -- BUY usa base total (inclui fees)
+  amount_coin       numeric(30,8),                -- SELL usa coin
+
+  filled_base_total numeric(30,8) not null default 0, -- total debita base do BUY
+  filled_coin       numeric(30,8) not null default 0, -- total debita coin do SELL
+
+  avg_price         numeric(30,8),
+  status            public.order_status not null default 'OPEN',
+  filled_trade_id   uuid references public.trades(id),
+
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+
+  -- checks duras
+  check (
+    (side = 'BUY'  and amount_base is not null and amount_base > 0 and amount_coin is null)
+    or
+    (side = 'SELL' and amount_coin is not null and amount_coin > 0 and amount_base is null)
+  ),
+  check (
+    (type = 'LIMIT' and price_limit is not null and price_limit > 0)
+    or
+    (type = 'MARKET' and price_limit is null)
+  )
+);
+
+create index if not exists idx_orders_open_coin
+  on public.orders (coin_id, status, created_at);
+
+create index if not exists idx_orders_coin_side_price
+  on public.orders (coin_id, side, price_limit, created_at);
+
+create index if not exists idx_orders_wallet_time
+  on public.orders (user_wallet_id, created_at desc);
+
+-- =========================================================
+-- ORDER_FILLS (cada trade pode preencher 2 ordens)
+-- =========================================================
+create table if not exists public.order_fills (
+  id            uuid primary key default gen_random_uuid(),
+  order_id      uuid not null references public.orders(id) on delete cascade,
+  trade_id      uuid not null references public.trades(id) on delete cascade,
+  role          public.fill_role not null,
+  price         numeric(30,8) not null,
+  amount_coin   numeric(30,8) not null,
+  amount_base   numeric(30,8) not null, -- BUY: base total; SELL: notional
+
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists idx_order_fills_order
+  on public.order_fills (order_id, created_at desc);
+
+create index if not exists idx_order_fills_trade
+  on public.order_fills (trade_id);
+
+
+-- =========================================================
+-- CANDLES 1m (hard)
+-- =========================================================
+create table if not exists public.coin_candles_1m (
+  coin_id      uuid not null references public.coins (id) on delete cascade,
+  bucket_time  timestamptz not null, -- date_trunc('minute', ts)
+
+  open_price   numeric(30,8) not null,
+  high_price   numeric(30,8) not null,
+  low_price    numeric(30,8) not null,
+  close_price  numeric(30,8) not null,
+
+  volume_base  numeric(30,8) not null default 0,
+  volume_coin  numeric(30,8) not null default 0,
+  trades_count integer not null default 0,
+
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+
+  primary key (coin_id, bucket_time)
+);
+
+create index if not exists idx_coin_candles_1m_coin_time
+  on public.coin_candles_1m (coin_id, bucket_time desc);
+
+
+-- =========================================================
+-- RPC: upsert_candle_1m
+-- =========================================================
+create or replace function public.upsert_candle_1m(
+  p_coin_id uuid,
+  p_price numeric,
+  p_volume_base numeric,
+  p_volume_coin numeric
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_bucket timestamptz := date_trunc('minute', now());
+begin
+  insert into public.coin_candles_1m (
+    coin_id, bucket_time,
+    open_price, high_price, low_price, close_price,
+    volume_base, volume_coin, trades_count,
+    created_at, updated_at
+  ) values (
+    p_coin_id, v_bucket,
+    p_price, p_price, p_price, p_price,
+    p_volume_base, p_volume_coin, 1,
+    now(), now()
+  )
+  on conflict (coin_id, bucket_time) do update
+    set high_price   = greatest(public.coin_candles_1m.high_price, excluded.high_price),
+        low_price    = least(public.coin_candles_1m.low_price, excluded.low_price),
+        close_price  = excluded.close_price,
+        volume_base  = public.coin_candles_1m.volume_base + excluded.volume_base,
+        volume_coin  = public.coin_candles_1m.volume_coin + excluded.volume_coin,
+        trades_count = public.coin_candles_1m.trades_count + 1,
+        updated_at   = now();
+end;
+$$;
+
+-- =========================================================
+-- RPC: match_orderbook (hard)
+-- - Cruza LIMIT BUY x LIMIT SELL
+-- - Preço do maker (ordem mais antiga)
+-- - Fee cobrada do BUY (base_total)
+-- - Atualiza trades, order_fills, balances, market_state e candle 1m
+-- =========================================================
+create or replace function public.match_orderbook(
+  p_coin_id uuid,
+  p_max_matches int default 50
+) returns setof public.trades
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_buy  public.orders%rowtype;
+  v_sell public.orders%rowtype;
+
+  v_coin public.coins%rowtype;
+
+  v_platform_wallet public.wallets%rowtype;
+  v_creator_wallet  public.wallets%rowtype;
+
+  v_fee_platform_rate numeric := 0.0075;
+  v_fee_creator_rate  numeric := 0.0025;
+  v_fee_total_rate    numeric := 0.01;
+
+  v_price numeric;
+  v_coin_qty numeric;
+  v_notional numeric;
+  v_base_total numeric;
+  v_fee_platform numeric;
+  v_fee_creator numeric;
+
+  v_trade public.trades%rowtype;
+  v_matches int := 0;
+
+  v_buy_base_rem numeric;
+  v_buy_max_coin numeric;
+  v_sell_coin_rem numeric;
+begin
+  select * into v_coin
+  from public.coins
+  where id = p_coin_id;
+
+  if not found then
+    raise exception 'coin not found';
+  end if;
+
+  if v_coin.status <> 'ACTIVE' then
+    raise exception 'coin must be ACTIVE to trade';
+  end if;
+
+  -- platform treasury wallet
+  select *
+  into v_platform_wallet
+  from public.wallets
+  where wallet_type = 'PLATFORM_TREASURY'
+    and is_active
+  order by created_at
+  limit 1
+  for update;
+
+  if not found then
+    raise exception 'platform treasury wallet not configured';
+  end if;
+
+  -- creator wallet
+  select w.*
+  into v_creator_wallet
+  from public.wallets w
+  join public.users u on u.id = w.user_id
+  join public.creators c on c.user_id = u.id
+  where c.id = v_coin.creator_id
+    and w.is_active
+    and w.wallet_type in ('CREATOR_TREASURY','USER')
+  order by case when w.wallet_type='CREATOR_TREASURY' then 0 else 1 end,
+           w.created_at
+  limit 1
+  for update;
+
+  if not found then
+    raise exception 'creator wallet not found for coin %', p_coin_id;
+  end if;
+
+  loop
+    exit when v_matches >= p_max_matches;
+
+    -- best BUY (maior preço, mais antigo)
+    select * into v_buy
+    from public.orders
+    where coin_id = p_coin_id
+      and status in ('OPEN','PARTIAL')
+      and side = 'BUY'
+      and type = 'LIMIT'
+      and (amount_base - filled_base_total) > 0
+    order by price_limit desc, created_at asc
+    limit 1
+    for update skip locked;
+
+    if not found then exit; end if;
+
+    -- best SELL (menor preço, mais antigo)
+    select * into v_sell
+    from public.orders
+    where coin_id = p_coin_id
+      and status in ('OPEN','PARTIAL')
+      and side = 'SELL'
+      and type = 'LIMIT'
+      and (amount_coin - filled_coin) > 0
+    order by price_limit asc, created_at asc
+    limit 1
+    for update skip locked;
+
+    if not found then exit; end if;
+
+    -- book não cruza
+    if v_buy.price_limit < v_sell.price_limit then
+      exit;
+    end if;
+
+    -- preço do maker = ordem mais antiga
+    v_price := case
+      when v_buy.created_at <= v_sell.created_at then v_buy.price_limit
+      else v_sell.price_limit
+    end;
+
+    v_buy_base_rem := v_buy.amount_base - v_buy.filled_base_total;
+    v_buy_max_coin := (v_buy_base_rem * (1 - v_fee_total_rate)) / v_price;
+
+    v_sell_coin_rem := v_sell.amount_coin - v_sell.filled_coin;
+
+    v_coin_qty := least(v_buy_max_coin, v_sell_coin_rem);
+    v_coin_qty := round(v_coin_qty, 8);
+
+    if v_coin_qty <= 0 then
+      exit;
+    end if;
+
+    v_notional   := v_coin_qty * v_price;
+    v_base_total := v_notional / (1 - v_fee_total_rate);
+
+    v_fee_platform := round(v_base_total * v_fee_platform_rate, 8);
+    v_fee_creator  := round(v_base_total * v_fee_creator_rate, 8);
+
+    -- trava wallets
+    perform 1 from public.wallets where id=v_buy.user_wallet_id for update;
+    perform 1 from public.wallets where id=v_sell.user_wallet_id for update;
+
+    -- checa saldo comprador
+    if (select balance_base from public.wallets where id=v_buy.user_wallet_id) < v_base_total then
+      raise exception 'insufficient base balance in buyer wallet';
+    end if;
+
+    -- checa saldo seller coin
+    if coalesce(
+      (select balance_available
+       from public.wallet_balances
+       where wallet_id=v_sell.user_wallet_id and coin_id=p_coin_id
+       for update),
+      0
+    ) < v_coin_qty then
+      raise exception 'insufficient coin balance in seller wallet';
+    end if;
+
+    -- base: buyer paga total, seller recebe notional, fees vão pra tesourarias
+    update public.wallets
+      set balance_base = balance_base - v_base_total,
+          updated_at = now()
+      where id = v_buy.user_wallet_id;
+
+    update public.wallets
+      set balance_base = balance_base + v_notional,
+          updated_at = now()
+      where id = v_sell.user_wallet_id;
+
+    update public.wallets
+      set balance_base = balance_base + v_fee_platform,
+          updated_at = now()
+      where id = v_platform_wallet.id;
+
+    update public.wallets
+      set balance_base = balance_base + v_fee_creator,
+          updated_at = now()
+      where id = v_creator_wallet.id;
+
+    -- coin: seller -> buyer
+    update public.wallet_balances
+      set balance_available = balance_available - v_coin_qty,
+          updated_at = now()
+      where wallet_id=v_sell.user_wallet_id and coin_id=p_coin_id;
+
+    insert into public.wallet_balances (wallet_id, coin_id, balance_available, balance_locked, updated_at)
+    values (v_buy.user_wallet_id, p_coin_id, v_coin_qty, 0, now())
+    on conflict (wallet_id, coin_id) do update
+      set balance_available = public.wallet_balances.balance_available + excluded.balance_available,
+          updated_at = now();
+
+    -- trade
+    insert into public.trades (
+      coin_id,
+      buyer_wallet_id,
+      seller_wallet_id,
+      side,
+      amount_coin,
+      amount_base,
+      price_effective,
+      fee_total_base,
+      status,
+      executed_at,
+      created_at
+    ) values (
+      p_coin_id,
+      v_buy.user_wallet_id,
+      v_sell.user_wallet_id,
+      'BUY',
+      v_coin_qty,
+      v_base_total,
+      v_price,
+      v_fee_platform + v_fee_creator,
+      'EXECUTED',
+      now(),
+      now()
+    )
+    returning * into v_trade;
+
+    -- fills
+    insert into public.order_fills (order_id, trade_id, role, price, amount_coin, amount_base)
+    values
+      (v_buy.id,  v_trade.id, 'TAKER', v_price, v_coin_qty, v_base_total),
+      (v_sell.id, v_trade.id, 'MAKER', v_price, v_coin_qty, v_notional);
+
+    -- update BUY order
+    update public.orders
+      set filled_base_total = filled_base_total + v_base_total,
+          avg_price = coalesce(
+            ((avg_price * (filled_base_total)) + (v_price * v_base_total)) / nullif(filled_base_total + v_base_total,0),
+            v_price
+          ),
+          status = case
+            when filled_base_total + v_base_total >= amount_base then 'FILLED'
+            else 'PARTIAL'
+          end,
+          filled_trade_id = case
+            when filled_base_total + v_base_total >= amount_base then v_trade.id
+            else filled_trade_id
+          end,
+          updated_at=now()
+      where id=v_buy.id;
+
+    -- update SELL order
+    update public.orders
+      set filled_coin = filled_coin + v_coin_qty,
+          avg_price = coalesce(
+            ((avg_price * (filled_coin)) + (v_price * v_coin_qty)) / nullif(filled_coin + v_coin_qty,0),
+            v_price
+          ),
+          status = case
+            when filled_coin + v_coin_qty >= amount_coin then 'FILLED'
+            else 'PARTIAL'
+          end,
+          filled_trade_id = case
+            when filled_coin + v_coin_qty >= amount_coin then v_trade.id
+            else filled_trade_id
+          end,
+          updated_at=now()
+      where id=v_sell.id;
+
+    -- ticker / mercados (sem mexer em reserves do AMM)
+    update public.coin_market_state
+      set price_current   = v_price,
+          volume_24h_base = volume_24h_base + v_notional,
+          volume_24h_coin = volume_24h_coin + v_coin_qty,
+          trades_24h      = trades_24h + 1,
+          last_trade_at   = now(),
+          updated_at      = now()
+      where coin_id = p_coin_id;
+
+    perform public.upsert_candle_1m(p_coin_id, v_price, v_notional, v_coin_qty);
+
+    insert into public.trade_fees (trade_id, kind, target_user_id, amount_base)
+    values
+      (v_trade.id, 'PLATFORM', null, v_fee_platform),
+      (v_trade.id, 'CREATOR',  v_creator_wallet.user_id, v_fee_creator);
+
+    v_matches := v_matches + 1;
+    return next v_trade;
+  end loop;
+
+  return;
+end;
+$$;
+
+-- =========================================================
+-- RPC: cancel_order
+-- só cancela OPEN/PARTIAL
+-- =========================================================
+create or replace function public.cancel_order(
+  p_order_id uuid,
+  p_wallet_id uuid
+) returns public.orders
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  v_order public.orders%rowtype;
+begin
+  select * into v_order
+  from public.orders
+  where id = p_order_id
+    and user_wallet_id = p_wallet_id
+  for update;
+
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  if v_order.status in ('FILLED','CANCELLED') then
+    raise exception 'order already closed';
+  end if;
+
+  update public.orders
+    set status='CANCELLED',
+        updated_at=now()
+  where id=p_order_id
+  returning * into v_order;
+
+  return v_order;
+end;
+$$;
+
+
+-- =========================================================
+-- PATCH HARD: adiciona colunas faltantes na orders existente
+-- =========================================================
+
+-- 1) garante que order_status tem PARTIAL (se já existe)
+do $$
+begin
+  alter type public.order_status add value if not exists 'PARTIAL';
+exception
+  when undefined_object then
+    -- se não existe, cria no padrão hard
+    create type public.order_status as enum ('OPEN','PARTIAL','FILLED','CANCELLED');
+end$$;
+
+-- 2) adiciona colunas de fill/avg_price se faltarem
+alter table public.orders
+  add column if not exists filled_base_total numeric(30,8) not null default 0,
+  add column if not exists filled_coin       numeric(30,8) not null default 0,
+  add column if not exists avg_price         numeric(30,8);
+
+-- 3) se sua coluna status estava com enum antigo, mantém,
+-- mas garante default OPEN
+alter table public.orders
+  alter column status set default 'OPEN';
+
+-- =========================================================
+-- ORDERBOOK LEVELS (depth) - HARD
+-- BUY qty_coin = (remaining_base_total * (1-fee_total)) / price
+-- SELL qty_coin = remaining_coin
+-- =========================================================
+create or replace view public.orderbook_levels_view as
+select
+  coin_id,
+  side,
+  price_limit as price,
+  case
+    when side = 'BUY' then
+      sum(
+        (
+          (amount_base - filled_base_total)
+          * (1 - 0.01)    -- fee_total=1%
+        ) / nullif(price_limit, 0)
+      )
+    else
+      sum(amount_coin - filled_coin)
+  end as qty_coin,
+  count(*) as orders
+from public.orders
+where status in ('OPEN','PARTIAL')
+  and type = 'LIMIT'
+  and price_limit is not null
+group by coin_id, side, price_limit;

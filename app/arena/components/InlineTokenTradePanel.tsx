@@ -2,6 +2,15 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 
 type MarketZone = "FRIO" | "HYPE" | "BOLHA" | "NEUTRO";
 
@@ -60,6 +69,13 @@ type SwapResp = {
   context: ContextResp;
 };
 
+type CandlePoint = {
+  ts: number;        // epoch ms
+  label: string;     // HH:mm
+  price: number;
+  volume_base?: number;
+};
+
 const FEE_PLATFORM_RATE = 0.0075;
 const FEE_CREATOR_RATE = 0.0025;
 
@@ -72,7 +88,17 @@ const safeParse = (v: string) => {
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
 
-export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelProps) {
+const toHHMM = (ts: number) => {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+};
+
+export function InlineTokenTradePanel({
+  token,
+  onClose,
+}: InlineTokenTradePanelProps) {
   const [mode, setMode] = useState<TradeMode>("BUY");
   const [amountBase, setAmountBase] = useState("100");
   const [amountCoin, setAmountCoin] = useState("");
@@ -85,8 +111,13 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
 
   const [loadingCtx, setLoadingCtx] = useState(true);
   const [ctxError, setCtxError] = useState<string | null>(null);
-
   const [ctx, setCtx] = useState<ContextResp | null>(null);
+
+  // chart state
+  const [candles, setCandles] = useState<CandlePoint[]>([]);
+  const [loadingCandles, setLoadingCandles] = useState(true);
+  const [candlesError, setCandlesError] = useState<string | null>(null);
+  const [range, setRange] = useState<"1h" | "4h" | "24h">("4h");
 
   const parsedBase = useMemo(() => safeParse(amountBase), [amountBase]);
   const parsedCoin = useMemo(() => safeParse(amountCoin), [amountCoin]);
@@ -150,6 +181,30 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
                     }
                   : prev
               );
+
+              // empurra preço realtime no gráfico (ponto fantasma)
+              setCandles((prev) => {
+                if (!prev.length) return prev;
+                const nowTs = Date.now();
+                const last = prev[prev.length - 1];
+                const priceNow = Number(next.price_current);
+                // se último ponto tem menos de 30s, só atualiza close
+                if (nowTs - last.ts < 30_000) {
+                  const copy = prev.slice();
+                  copy[copy.length - 1] = {
+                    ...last,
+                    price: priceNow,
+                    label: toHHMM(nowTs),
+                    ts: nowTs,
+                  };
+                  return copy;
+                }
+                // senão adiciona ponto novo
+                return [
+                  ...prev,
+                  { ts: nowTs, label: toHHMM(nowTs), price: priceNow },
+                ].slice(-240);
+              });
             }
           )
           .subscribe();
@@ -170,6 +225,100 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
       cancelled = true;
     };
   }, [token.id]);
+
+  // ---------------------------
+  // Candles loader (1m -> fallback trades -> fallback synthetic)
+  // ---------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCandles() {
+      setLoadingCandles(true);
+      setCandlesError(null);
+
+      try {
+        const now = Date.now();
+        const cutoffMs =
+          range === "1h" ? 1 * 60 * 60 * 1000 :
+          range === "4h" ? 4 * 60 * 60 * 1000 :
+          24 * 60 * 60 * 1000;
+
+        // tentativa 1: candles 1m
+        const { data: c1m, error: cErr } = await supabase
+          .from("coin_candles_1m")
+          .select("bucket_time, close_price, volume_base")
+          .eq("coin_id", token.id)
+          .gte("bucket_time", new Date(now - cutoffMs).toISOString())
+          .order("bucket_time", { ascending: true })
+          .limit(range === "24h" ? 1440 : range === "4h" ? 240 : 120);
+
+        if (!cErr && c1m && c1m.length > 1) {
+          const mapped: CandlePoint[] = c1m.map((r: any) => {
+            const ts = new Date(r.bucket_time).getTime();
+            return {
+              ts,
+              label: toHHMM(ts),
+              price: Number(r.close_price),
+              volume_base: Number(r.volume_base ?? 0),
+            };
+          });
+
+          if (!cancelled) setCandles(mapped);
+          return;
+        }
+
+        // tentativa 2: trades (ticker de última execução)
+        const { data: trades, error: tErr } = await supabase
+          .from("trades")
+          .select("executed_at, price_effective")
+          .eq("coin_id", token.id)
+          .gte("executed_at", new Date(now - cutoffMs).toISOString())
+          .order("executed_at", { ascending: true })
+          .limit(range === "24h" ? 1440 : range === "4h" ? 240 : 120);
+
+        if (!tErr && trades && trades.length > 1) {
+          const mapped: CandlePoint[] = trades.map((r: any) => {
+            const ts = new Date(r.executed_at).getTime();
+            return {
+              ts,
+              label: toHHMM(ts),
+              price: Number(r.price_effective),
+            };
+          });
+
+          if (!cancelled) setCandles(mapped);
+          return;
+        }
+
+        // fallback 3: sintético (quando não há histórico)
+        const basePrice = ctx?.market.price_current ?? token.price ?? 1;
+        const points = 40;
+        const step = cutoffMs / points;
+        const mapped: CandlePoint[] = Array.from({ length: points }).map((_, i) => {
+          const ts = now - cutoffMs + i * step;
+          // ruído bem leve só pra visual
+          const noise = (Math.sin(i / 3) + Math.cos(i / 5)) * 0.0025; // 0.25%
+          return {
+            ts,
+            label: toHHMM(ts),
+            price: basePrice * (1 + noise),
+          };
+        });
+
+        if (!cancelled) setCandles(mapped);
+      } catch (err: any) {
+        console.error(err);
+        if (!cancelled) setCandlesError("Sem histórico para gráfico ainda.");
+      } finally {
+        if (!cancelled) setLoadingCandles(false);
+      }
+    }
+
+    loadCandles();
+    return () => {
+      cancelled = true;
+    };
+  }, [token.id, range, ctx?.market.price_current]);
 
   const price = ctx?.market.price_current ?? token.price ?? 0;
   const baseReserve = ctx?.market.base_reserve ?? 0;
@@ -203,7 +352,16 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
     const impactPct = (priceEffective / price - 1) * 100;
     const newPrice = newBase / newCoin;
 
-    return { feePlatform, feeCreator, baseNet, coinOut, minOut, priceEffective, impactPct, newPrice };
+    return {
+      feePlatform,
+      feeCreator,
+      baseNet,
+      coinOut,
+      minOut,
+      priceEffective,
+      impactPct,
+      newPrice,
+    };
   }, [parsedBase, parsedSlippage, price, baseReserve, coinReserve]);
 
   const sellEst = useMemo(() => {
@@ -227,7 +385,16 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
     const impactPct = (priceEffective / price - 1) * 100;
     const newPrice = newBase / newCoin;
 
-    return { baseOutGross, feePlatform, feeCreator, baseOutNet, minGrossOut, priceEffective, impactPct, newPrice };
+    return {
+      baseOutGross,
+      feePlatform,
+      feeCreator,
+      baseOutNet,
+      minGrossOut,
+      priceEffective,
+      impactPct,
+      newPrice,
+    };
   }, [parsedCoin, parsedSlippage, price, baseReserve, coinReserve]);
 
   const zoneLabel =
@@ -263,6 +430,20 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
 
   const canBuy = parsedBase > 0 && parsedBase <= baseBalance;
   const canSell = parsedCoin > 0 && parsedCoin <= coinBalance;
+
+  // chart domain
+  const yDomain = useMemo<[number, number]>(() => {
+    if (!candles.length) return [0, 1];
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const p of candles) {
+      if (p.price < min) min = p.price;
+      if (p.price > max) max = p.price;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    const pad = (max - min) * 0.15 || min * 0.02 || 0.0001;
+    return [Math.max(0, min - pad), max + pad];
+  }, [candles]);
 
   // ---------------------------
   // Edge swap submit
@@ -313,13 +494,15 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
 
       if (mode === "BUY") {
         setFeedback(
-          `Compra executada. Recebeu ${formatCoin(resp.trade.amount_coin)} ${token.ticker} a ${formatCurrency(
-            resp.trade.price_effective
-          )}.`
+          `Compra executada. Recebeu ${formatCoin(resp.trade.amount_coin)} ${
+            token.ticker
+          } a ${formatCurrency(resp.trade.price_effective)}.`
         );
       } else {
         setFeedback(
-          `Venda executada. Vendeu ${formatCoin(resp.trade.amount_coin)} ${token.ticker} e recebeu ${formatCurrency(
+          `Venda executada. Vendeu ${formatCoin(resp.trade.amount_coin)} ${
+            token.ticker
+          } e recebeu ${formatCurrency(
             resp.trade.amount_base - resp.trade.fee_total_base
           )} aprox. após taxas.`
         );
@@ -356,7 +539,11 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
     return (
       <section className="inline-trade-panel">
         <div className="inline-feedback inline-feedback--error">{ctxError}</div>
-        <button type="button" className="btn-outline inline-submit" onClick={onClose}>
+        <button
+          type="button"
+          className="btn-outline inline-submit"
+          onClick={onClose}
+        >
           Fechar
         </button>
       </section>
@@ -364,22 +551,35 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
   }
 
   return (
-    <section className="inline-trade-panel" aria-label={`Negociação de ${token.ticker}`}>
+    <section
+      className="inline-trade-panel"
+      aria-label={`Negociação de ${token.ticker}`}
+    >
+      {/* HEAD */}
       <div className="inline-trade-head">
         <div className="inline-trade-left">
           <div className="inline-trade-title-row">
             <span className="inline-trade-ticker">{token.ticker}</span>
-            <span className={`inline-trade-zone ${zoneClass}`}>{zoneLabel}</span>
+            <span className={`inline-trade-zone ${zoneClass}`}>
+              {zoneLabel}
+            </span>
           </div>
           <div className="inline-trade-name">{token.name}</div>
-          {token.storyHook && <div className="inline-trade-story">{token.storyHook}</div>}
+          {token.storyHook && (
+            <div className="inline-trade-story">{token.storyHook}</div>
+          )}
         </div>
 
-        <button type="button" className="inline-trade-close" onClick={onClose}>
+        <button
+          type="button"
+          className="inline-trade-close"
+          onClick={onClose}
+        >
           fechar ✕
         </button>
       </div>
 
+      {/* SUMMARY */}
       <div className="inline-trade-summary">
         <div className="inline-sum-box">
           <div className="inline-sum-label">Preço agora</div>
@@ -387,7 +587,9 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
         </div>
         <div className="inline-sum-box">
           <div className="inline-sum-label">Saldo base</div>
-          <div className="inline-sum-value">{formatCurrency(baseBalance)}</div>
+          <div className="inline-sum-value">
+            {formatCurrency(baseBalance)}
+          </div>
         </div>
         <div className="inline-sum-box">
           <div className="inline-sum-label">Saldo {token.ticker}</div>
@@ -395,6 +597,107 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
         </div>
       </div>
 
+      {/* CHART */}
+      <div className="inline-chart" style={{ marginTop: 10 }}>
+        <div
+          className="inline-chart-head"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 6,
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Oscilação recente (fechamento)
+          </div>
+          <div
+            className="inline-chart-range"
+            style={{ display: "flex", gap: 6 }}
+          >
+            {(["1h", "4h", "24h"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRange(r)}
+                className={
+                  "inline-range-pill " + (range === r ? "active" : "")
+                }
+                style={{
+                  fontSize: 12,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="inline-chart-body"
+          style={{
+            height: 170,
+            width: "100%",
+            borderRadius: 12,
+            overflow: "hidden",
+            background: "rgba(255,255,255,0.02)",
+          }}
+        >
+          {loadingCandles ? (
+            <div className="inline-feedback" style={{ padding: 10 }}>
+              Carregando gráfico…
+            </div>
+          ) : candlesError ? (
+            <div className="inline-feedback inline-feedback--error" style={{ padding: 10 }}>
+              {candlesError}
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={candles}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.12} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "currentColor" }}
+                  interval="preserveStartEnd"
+                  minTickGap={16}
+                />
+                <YAxis
+                  domain={yDomain}
+                  tick={{ fontSize: 11, fill: "currentColor" }}
+                  width={60}
+                  tickFormatter={(v) =>
+                    Number(v).toLocaleString("pt-BR", {
+                      maximumFractionDigits: 6,
+                    })
+                  }
+                />
+                <Tooltip
+                  formatter={(value: any) => [
+                    formatCurrency(Number(value)),
+                    "Preço",
+                  ]}
+                  labelFormatter={(_, payload) => {
+                    const p = payload?.[0]?.payload as CandlePoint | undefined;
+                    if (!p) return "";
+                    return new Date(p.ts).toLocaleString("pt-BR");
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="price"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* TABS */}
       <div className="inline-trade-tabs" role="tablist">
         <button
           type="button"
@@ -418,11 +721,14 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
         </button>
       </div>
 
+      {/* FORM */}
       <form className="inline-trade-form" onSubmit={handleSubmit}>
         {isBuy ? (
           <>
             <label className="inline-field">
-              <span className="inline-field-label">Quanto em base você quer colocar?</span>
+              <span className="inline-field-label">
+                Quanto em base você quer colocar?
+              </span>
               <div className="inline-input-wrap">
                 <span className="inline-prefix">R$</span>
                 <input
@@ -439,17 +745,25 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
 
             <div className="inline-est">
               <span>Estimativa de recebimento</span>
-              <strong>{buyEst ? `${formatCoin(buyEst.coinOut)} ${token.ticker}` : "--"}</strong>
+              <strong>
+                {buyEst
+                  ? `${formatCoin(buyEst.coinOut)} ${token.ticker}`
+                  : "--"}
+              </strong>
               <small>
                 Mínimo com slippage ({parsedSlippage}%):{" "}
-                {buyEst ? `${formatCoin(buyEst.minOut)} ${token.ticker}` : "--"}
+                {buyEst
+                  ? `${formatCoin(buyEst.minOut)} ${token.ticker}`
+                  : "--"}
               </small>
             </div>
           </>
         ) : (
           <>
             <label className="inline-field">
-              <span className="inline-field-label">Quantos tokens você quer vender?</span>
+              <span className="inline-field-label">
+                Quantos tokens você quer vender?
+              </span>
               <div className="inline-input-wrap">
                 <span className="inline-prefix">{token.ticker}</span>
                 <input
@@ -466,18 +780,24 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
 
             <div className="inline-est">
               <span>Estimativa de recebimento (bruto)</span>
-              <strong>{sellEst ? formatCurrency(sellEst.baseOutGross) : "--"}</strong>
+              <strong>
+                {sellEst ? formatCurrency(sellEst.baseOutGross) : "--"}
+              </strong>
               <small>
-                Líquido estimado após taxas: {sellEst ? formatCurrency(sellEst.baseOutNet) : "--"}
+                Líquido estimado após taxas:{" "}
+                {sellEst ? formatCurrency(sellEst.baseOutNet) : "--"}
               </small>
               <small>
                 Mínimo bruto com slippage ({parsedSlippage}%):{" "}
-                {sellEst ? formatCurrency(sellEst.minGrossOut) : "--"}
+                {sellEst
+                  ? formatCurrency(sellEst.minGrossOut)
+                  : "--"}
               </small>
             </div>
           </>
         )}
 
+        {/* ADVANCED */}
         <button
           type="button"
           className="inline-advanced-toggle"
@@ -489,7 +809,9 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
         {showAdvanced && (
           <div className="inline-advanced">
             <label className="inline-field">
-              <span className="inline-field-label">Slippage tolerado (%)</span>
+              <span className="inline-field-label">
+                Slippage tolerado (%)
+              </span>
               <input
                 type="number"
                 min="0"
@@ -501,18 +823,23 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
                 placeholder="1"
               />
               <small>
-                Quanto maior, mais chance de executar — e maior a chance de tomar preço ruim.
+                Quanto maior, mais chance de executar — e maior a chance
+                de tomar preço ruim.
               </small>
             </label>
 
             <div className="inline-advanced-grid">
               <div className="inline-adv-box">
                 <div className="inline-adv-label">Taxa plataforma</div>
-                <div className="inline-adv-value">{(FEE_PLATFORM_RATE * 100).toFixed(2)}%</div>
+                <div className="inline-adv-value">
+                  {(FEE_PLATFORM_RATE * 100).toFixed(2)}%
+                </div>
               </div>
               <div className="inline-adv-box">
                 <div className="inline-adv-label">Taxa criador</div>
-                <div className="inline-adv-value">{(FEE_CREATOR_RATE * 100).toFixed(2)}%</div>
+                <div className="inline-adv-value">
+                  {(FEE_CREATOR_RATE * 100).toFixed(2)}%
+                </div>
               </div>
               <div className="inline-adv-box">
                 <div className="inline-adv-label">Impacto estimado</div>
@@ -529,7 +856,13 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
               <div className="inline-adv-box">
                 <div className="inline-adv-label">Preço após trade</div>
                 <div className="inline-adv-value">
-                  {isBuy ? (buyEst ? formatCurrency(buyEst.newPrice) : "--") : (sellEst ? formatCurrency(sellEst.newPrice) : "--")}
+                  {isBuy
+                    ? buyEst
+                      ? formatCurrency(buyEst.newPrice)
+                      : "--"
+                    : sellEst
+                    ? formatCurrency(sellEst.newPrice)
+                    : "--"}
                 </div>
               </div>
             </div>
@@ -541,14 +874,23 @@ export function InlineTokenTradePanel({ token, onClose }: InlineTokenTradePanelP
           className="btn-primary inline-submit"
           disabled={isSubmitting || (isBuy ? !canBuy : !canSell)}
         >
-          {isSubmitting ? "Executando..." : isBuy ? "Comprar assumindo o risco" : "Vender assumindo o risco"}
+          {isSubmitting
+            ? "Executando..."
+            : isBuy
+            ? "Comprar assumindo o risco"
+            : "Vender assumindo o risco"}
         </button>
 
         {!isSubmitting && isBuy && parsedBase > 0 && !canBuy && (
-          <p className="inline-feedback inline-feedback--error">Saldo base insuficiente.</p>
+          <p className="inline-feedback inline-feedback--error">
+            Saldo base insuficiente.
+          </p>
         )}
+
         {!isSubmitting && !isBuy && parsedCoin > 0 && !canSell && (
-          <p className="inline-feedback inline-feedback--error">Saldo de tokens insuficiente.</p>
+          <p className="inline-feedback inline-feedback--error">
+            Saldo de tokens insuficiente.
+          </p>
         )}
 
         {feedback && <p className="inline-feedback">{feedback}</p>}
