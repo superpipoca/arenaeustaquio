@@ -2477,3 +2477,154 @@ select.field-input:focus {
     text-align: center;
   }
 }
+/* === MARKET TICKER – BARRA OBSESSIVA DE COTAÇÕES (UPGRADE) === */
+
+.market-ticker {
+  margin: 18px 0 28px;
+}
+
+.market-ticker-strip {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: radial-gradient(circle at top, #181818 0, #050505 60%);
+}
+
+.market-ticker-track {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 8px 26px;
+  white-space: nowrap;
+  animation: market-ticker-scroll 40s linear infinite;
+}
+
+/* Cada “bloco” de token no ticker */
+.market-ticker-item {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 180px;
+  padding-right: 16px;
+  margin-right: 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Linha de cima: Ticker + preço + variação */
+.market-ticker-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.market-ticker-ticker {
+  font-family: "Oswald", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--accent-hype);
+}
+
+.market-ticker-price-block {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.market-ticker-price {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.market-ticker-change {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.market-ticker-change--up {
+  color: var(--accent-hype);
+}
+
+.market-ticker-change--down {
+  color: var(--accent-primary);
+}
+
+/* Linha de baixo: nome + zona de mercado */
+.market-ticker-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.market-ticker-name {
+  font-size: 11px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+/* Pílula de zona de mercado */
+.market-ticker-zone {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+}
+
+.market-ticker-zone--hype {
+  border-color: var(--accent-hype);
+  color: var(--accent-hype);
+}
+
+.market-ticker-zone--bolha {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.market-ticker-zone--frio {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.market-ticker-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* Animação de rolagem contínua */
+@keyframes market-ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .market-ticker-track {
+    gap: 18px;
+    padding: 8px 18px;
+    animation-duration: 32s;
+  }
+
+  .market-ticker-item {
+    min-width: 170px;
+    padding-right: 12px;
+  }
+
+  .market-ticker-note {
+    font-size: 10px;
+  }
+}

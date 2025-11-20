@@ -1,10 +1,10 @@
-// app/arena/page.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header3ustaquio from "../componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "../componentes/ui/layout/Footer3ustaquio";
+import { MarketTicker } from "./components/MarketTicker";
 
 type MarketZone = "FRIO" | "HYPE" | "BOLHA";
 type TokenType = "PESSOA" | "LOCAL" | "PROJETO" | "COMUNIDADE";
@@ -52,8 +52,10 @@ const MOCK_TOKENS: ArenaToken[] = [
     change7d: 3.1,
     volume24h: 21_500,
     liquidityScore: 61,
-    storyHook: "Token da padaria que abre antes do sol e fecha depois do último café.",
-    riskNote: "Narrativa lenta, menos hype, mais comunidade. Continua sendo alto risco."
+    storyHook:
+      "Token da padaria que abre antes do sol e fecha depois do último café.",
+    riskNote:
+      "Narrativa lenta, menos hype, mais comunidade. Continua sendo alto risco."
   },
   {
     id: "3",
@@ -66,7 +68,8 @@ const MOCK_TOKENS: ArenaToken[] = [
     change7d: 310.4,
     volume24h: 402_300,
     liquidityScore: 68,
-    storyHook: "Todo mundo precisa de peça. O token virou meme entre mecânicos.",
+    storyHook:
+      "Todo mundo precisa de peça. O token virou meme entre mecânicos.",
     riskNote: "Variação insana nos últimos dias. Isso cheira a bolha declarada."
   },
   {
@@ -80,8 +83,10 @@ const MOCK_TOKENS: ArenaToken[] = [
     change7d: 96.5,
     volume24h: 155_900,
     liquidityScore: 74,
-    storyHook: "Tribo de devs que viraram moeda própria. Push code, push preço.",
-    riskNote: "Hype alimentado por Twitter/X e lives. Humor muda, preço também."
+    storyHook:
+      "Tribo de devs que viraram moeda própria. Push code, push preço.",
+    riskNote:
+      "Hype alimentado por Twitter/X e lives. Humor muda, preço também."
   },
   {
     id: "5",
@@ -95,7 +100,8 @@ const MOCK_TOKENS: ArenaToken[] = [
     volume24h: 9_800,
     liquidityScore: 35,
     storyHook: "O vizinho que virou lenda de bairro. Agora tem token só dele.",
-    riskNote: "Comunidade pequena e ilíquida. Pode ser laboratório… ou só flop."
+    riskNote:
+      "Comunidade pequena e ilíquida. Pode ser laboratório… ou só flop mesmo."
   }
 ];
 
@@ -113,8 +119,7 @@ export default function ArenaPage() {
     }
 
     switch (sortKey) {
-      case "hype":
-        // HYPE e BOLHA primeiro, depois FRIO, dentro de cada grupo ordena por volume
+      case "hype": {
         const zoneWeight: Record<MarketZone, number> = {
           HYPE: 3,
           BOLHA: 2,
@@ -126,6 +131,7 @@ export default function ArenaPage() {
           return b.volume24h - a.volume24h;
         });
         break;
+      }
       case "top_gainers":
         list.sort((a, b) => b.change24h - a.change24h);
         break;
@@ -140,13 +146,19 @@ export default function ArenaPage() {
     return list;
   }, [sortKey, typeFilter]);
 
+  // Radar geral da Arena
+  const highlightToken =
+    [...MOCK_TOKENS].sort((a, b) => b.change24h - a.change24h)[0] ?? null;
+
+  const hypeCount = MOCK_TOKENS.filter((t) => t.zone === "HYPE").length;
+  const bolhaCount = MOCK_TOKENS.filter((t) => t.zone === "BOLHA").length;
+  const frioCount = MOCK_TOKENS.filter((t) => t.zone === "FRIO").length;
+
   const handleOpenToken = (token: ArenaToken) => {
-    // 👉 no futuro: ir para /token/[ticker] ou /tokens/[id]
     router.push(`/token/${token.ticker.toLowerCase()}`);
   };
 
   const handlePrimaryAction = (token: ArenaToken) => {
-    // 👉 no futuro: rota de compra /trade/[ticker] ou algo assim
     router.push(`/token/${token.ticker.toLowerCase()}`);
   };
 
@@ -170,35 +182,110 @@ export default function ArenaPage() {
           {/* HERO / Introdução da Arena */}
           <section className="arena-header">
             <p className="arena-kicker">Jornada do Trader · Arena de Narrativas</p>
-            <h1 className="arena-title">
-              Bem-vindo à{" "}
-              <span>arena onde histórias viram gráfico em tempo real.</span>
-            </h1>
-            <p className="arena-subtitle">
-              Aqui não tem promessa de investimento seguro. Você está olhando para
-              um mercado de narrativas – bares, padarias, pessoas, comunidades – que
-              podem subir forte, despencar sem dó ou virar pó.
-            </p>
 
-            <div className="arena-badges-row">
-              <div className="arena-badge">
-                <strong>O jogo é simples:</strong> escolher em qual história você
-                quer apostar sabendo que o risco é 100% seu.
+            <div className="two-cols arena-hero-grid">
+              {/* Lado esquerdo: narrativa e jornada */}
+              <div className="arena-hero-left">
+                <h1 className="arena-title">
+                  Bem-vindo à{" "}
+                  <span>arena onde hype, bolha e frio aparecem sem filtro.</span>
+                </h1>
+
+                <p className="arena-subtitle">
+                  Aqui você não vê “ativo seguro”. Você vê{" "}
+                  <strong>histórias sendo precificadas em tempo real</strong> —
+                  bares, padarias, pessoas, comunidades — que podem explodir de
+                  hype, desmontar em horas ou simplesmente sumir.
+                </p>
+
+                <ul className="hero-bullets">
+                  <li>
+                    <strong>1. Escolha uma narrativa</strong> · bar, pessoa,
+                    projeto ou comunidade.
+                  </li>
+                  <li>
+                    <strong>2. Leia o clima do mercado</strong> · hype, bolha ou
+                    pura geladeira.
+                  </li>
+                  <li>
+                    <strong>3. Decida se entra no jogo</strong> sabendo que o risco
+                    é 100% seu.
+                  </li>
+                </ul>
+
+                <p className="arena-subtitle arena-subtitle--small">
+                  A Arena foi feita para quem{" "}
+                  <strong>já aceita volatilidade</strong> e só quer uma coisa:
+                  saber exatamente em que tipo de loucura está se metendo antes de
+                  apertar o botão.
+                </p>
               </div>
-              <div className="arena-badge">
-                <strong>Não é consultoria, não é recomendação:</strong> é uma
-                vitrine brutalmente honesta de hype, bolha e liquidez.
-              </div>
+
+              {/* Lado direito: highlight comercial com simulação */}
+              {highlightToken && (
+                <aside className="hero-right-card arena-highlight-card">
+                  <div className="hero-right-header">
+                    <div>
+                      <h2 className="hero-right-title">Radar do Hype agora</h2>
+                      <p className="hero-right-note">
+                        Um recorte da Arena neste momento. Os números mudam.
+                        A honestidade sobre o risco, não.
+                      </p>
+                    </div>
+                    <span className="hero-right-badge">Snapshot especulativo</span>
+                  </div>
+
+                  <div className="hero-right-body">
+                    <p>
+                      Enquanto você lê isso,{" "}
+                      <strong>{highlightToken.name}</strong> (
+                      {highlightToken.ticker}) está{" "}
+                      <strong>
+                        {highlightToken.change24h >= 0 ? "+" : ""}
+                        {highlightToken.change24h.toFixed(1)}%
+                      </strong>{" "}
+                      nas últimas 24h.
+                    </p>
+                    <p>
+                      Se alguém tivesse colocado{" "}
+                      <strong>{formatCurrency(100)}</strong> nesse token há 7 dias,
+                      hoje estaria olhando para{" "}
+                      <strong>
+                        {formatCurrency(
+                          100 * (1 + highlightToken.change7d / 100)
+                        )}
+                      </strong>
+                      .
+                    </p>
+                  </div>
+
+                  <div className="mini-metric-row">
+                    <div className="mini-metric">
+                      <div className="mini-metric-label">Tokens em hype</div>
+                      <div className="mini-metric-value pos">{hypeCount}</div>
+                    </div>
+                    <div className="mini-metric">
+                      <div className="mini-metric-label">Em zona de bolha</div>
+                      <div className="mini-metric-value neg">{bolhaCount}</div>
+                    </div>
+                    <div className="mini-metric">
+                      <div className="mini-metric-label">No mercado frio</div>
+                      <div className="mini-metric-value">{frioCount}</div>
+                    </div>
+                  </div>
+
+                  <p className="hero-right-note">
+                    Esta é uma <strong>simulação histórica</strong>, usando a
+                    variação dos últimos 7 dias. Não é previsão, não é
+                    recomendação e não é promessa de que isso vá se repetir.
+                  </p>
+                </aside>
+              )}
             </div>
-
-            <p className="arena-subtitle arena-subtitle--small">
-              Use a Arena para sentir o pulso do mercado antes de entrar: veja o{" "}
-              <strong>hype</strong>, identifique a{" "}
-              <strong>zona da bolha</strong>, descubra o que está{" "}
-              <strong>mofando no mercado frio</strong> – e decida se você aguenta o
-              tranco.
-            </p>
           </section>
+
+          {/* 🔥 TICKER DE COTAÇÕES DA ARENA (usando a lista ordenada) */}
+          <MarketTicker tokens={filteredAndSorted} />
 
           {/* Toolbar: ordenação, filtro, legenda de risco */}
           <section className="arena-toolbar">
@@ -318,8 +405,8 @@ export default function ArenaPage() {
                 </span>
               </div>
               <p className="arena-toolbar-note">
-                Hype não é sinal verde. É só um alerta de que a mesa está aquecida –
-                e pode virar na mesma velocidade.
+                Hype não é sinal verde. É alerta de que a mesa está aquecida — e
+                pode virar na mesma velocidade.
               </p>
             </div>
           </section>
@@ -329,15 +416,16 @@ export default function ArenaPage() {
             <div className="arena-list-header">
               <h2 className="arena-list-title">Ranking da Arena</h2>
               <p className="arena-list-caption">
-                Veja quais narrativas estão sendo precificadas agora. Nada aqui é
-                promessa de retorno – é jogo puro.
+                Aqui você vê onde o jogo está pegando fogo, onde a bolha está
+                inflando e onde a narrativa morreu. Escolha uma história, encare os
+                números e só então decida se entra.
               </p>
             </div>
 
             {filteredAndSorted.length === 0 ? (
               <div className="arena-empty">
                 <p>Nenhum token encontrado com esses filtros.</p>
-                <p>Altere o tipo ou a ordenação para ver outros movimentos.</p>
+                <p>Altere o tipo ou a ordenação para caçar outros movimentos.</p>
               </div>
             ) : (
               <div className="creator-token-list arena-token-list">
@@ -349,6 +437,10 @@ export default function ArenaPage() {
                       : token.zone === "BOLHA"
                       ? "zone-bolha"
                       : "zone-frio";
+
+                  const simBase = 100;
+                  const simValue = simBase * (1 + token.change7d / 100);
+                  const showSim = Math.abs(token.change7d) >= 15;
 
                   return (
                     <article
@@ -423,6 +515,18 @@ export default function ArenaPage() {
                       </div>
 
                       <footer className="creator-token-card-footer arena-token-footer">
+                        {showSim && (
+                          <p className="arena-risk-note">
+                            Se alguém tivesse colocado{" "}
+                            <strong>{formatCurrency(simBase)}</strong> nesse token
+                            há 7 dias, hoje estaria vendo{" "}
+                            <strong>{formatCurrency(simValue)}</strong>{" "}
+                            {token.change7d > 0
+                              ? "(antes de taxas, sem garantia de repetir)."
+                              : "(resultado negativo, risco escancarado)."}
+                          </p>
+                        )}
+
                         <p className="arena-risk-note">{token.riskNote}</p>
 
                         <div className="arena-actions-row">
@@ -434,7 +538,7 @@ export default function ArenaPage() {
                               handlePrimaryAction(token);
                             }}
                           >
-                            Entrar nesse hype com consciência
+                            Quero entrar nesse jogo assumindo o risco
                           </button>
                           <button
                             type="button"
@@ -444,7 +548,7 @@ export default function ArenaPage() {
                               handleOpenToken(token);
                             }}
                           >
-                            Ver detalhes da narrativa
+                            Ver detalhes completos do token
                           </button>
                         </div>
                       </footer>
