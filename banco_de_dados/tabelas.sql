@@ -1089,3 +1089,68 @@ select
   end
 from metrics m;
 $$;
+
+
+create or replace view public.arena_tokens_view as
+with last_24h as (
+  select
+    coin_id,
+    close_price as price_24h
+  from public.coin_candles_1d
+  where bucket_date = current_date - 1
+),
+last_7d as (
+  select
+    coin_id,
+    close_price as price_7d
+  from public.coin_candles_1d
+  where bucket_date = current_date - 7
+),
+vol_7d as (
+  select
+    coin_id,
+    sum(volume_base)  as volume_7d,
+    sum(trades_count) as trades_7d
+  from public.coin_candles_1d
+  where bucket_date >= current_date - 7
+  group by coin_id
+)
+select
+  c.id   as coin_id,
+  c.name,
+  c.symbol               as ticker,
+  c.tags,                                -- vamos inferir tipo (PESSOA/LOCAL/PROJETO/COMUNIDADE) daqui
+  cms.risk_zone,
+  cms.price_current      as price,
+  cms.volume_24h_base,
+  cms.hype_score,
+  coalesce(v7.volume_7d,  0) as volume_7d,
+  coalesce(v7.trades_7d,  0) as trades_7d,
+  case
+    when l24.price_24h is not null and l24.price_24h > 0
+    then (cms.price_current / l24.price_24h - 1) * 100
+    else null
+  end as change_24h,
+  case
+    when l7.price_7d is not null and l7.price_7d > 0
+    then (cms.price_current / l7.price_7d - 1) * 100
+    else null
+  end as change_7d,
+  least(
+    100,
+    greatest(
+      0,
+      round(
+        coalesce(log(10, cms.volume_24h_base + 1) * 10, 0)
+        + coalesce(v7.trades_7d, 0) * 0.5
+      )
+    )
+  )::int as liquidity_score,
+  c.narrative_short,
+  c.risk_disclaimer
+from public.coins c
+join public.coin_market_state cms on cms.coin_id = c.id
+left join last_24h l24 on l24.coin_id = c.id
+left join last_7d  l7  on l7.coin_id = c.id
+left join vol_7d   v7  on v7.coin_id = c.id
+where c.status = 'ACTIVE';

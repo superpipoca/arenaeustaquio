@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useMemo, useState } from "react";
 import Header3ustaquio from "../componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "../componentes/ui/layout/Footer3ustaquio";
 import { MarketTicker } from "./components/MarketTicker";
+import { TokenTradePanel } from "./components/TokenTradePanel";
+import { supabase } from "../lib/supabaseClient";
 
 type MarketZone = "FRIO" | "HYPE" | "BOLHA";
 type TokenType = "PESSOA" | "LOCAL" | "PROJETO" | "COMUNIDADE";
@@ -26,7 +27,29 @@ type ArenaToken = {
 
 type SortKey = "hype" | "top_gainers" | "top_losers" | "volume";
 
-const MOCK_TOKENS: ArenaToken[] = [
+/**
+ * Linha vinda de public.coins com join em coin_market_state
+ */
+type CoinRow = {
+  id: string;
+  name: string;
+  symbol: string;
+  tags: string[] | null;
+  narrative_short: string | null;
+  risk_disclaimer: string | null;
+  status: string;
+  coin_market_state: null | {
+    risk_zone: string | null;
+    price_current: string | number | null;
+    volume_24h_base: string | number | null;
+    hype_score: string | number | null;
+  };
+};
+
+/**
+ * Fallback local (caso o banco não traga nada ou esteja vazio)
+ */
+const FALLBACK_TOKENS: ArenaToken[] = [
   {
     id: "1",
     name: "Bar do Zé",
@@ -70,7 +93,8 @@ const MOCK_TOKENS: ArenaToken[] = [
     liquidityScore: 68,
     storyHook:
       "Todo mundo precisa de peça. O token virou meme entre mecânicos.",
-    riskNote: "Variação insana nos últimos dias. Isso cheira a bolha declarada."
+    riskNote:
+      "Variação insina nos últimos dias. Isso cheira a bolha declarada."
   },
   {
     id: "4",
@@ -105,14 +129,131 @@ const MOCK_TOKENS: ArenaToken[] = [
   }
 ];
 
-export default function ArenaPage() {
-  const router = useRouter();
+const normalizeNumber = (n: string | number | null | undefined): number =>
+  n == null ? 0 : typeof n === "number" ? n : Number(n);
 
+/**
+ * Inferimos o tipo de token a partir das tags da coin
+ */
+const inferTokenType = (tags: string[] | null): TokenType => {
+  const list = (tags ?? []).map((t) => t.toLowerCase());
+
+  if (list.some((t) => t.includes("pessoa"))) return "PESSOA";
+  if (
+    list.some(
+      (t) =>
+        t.includes("local") ||
+        t.includes("bar") ||
+        t.includes("padaria") ||
+        t.includes("loja")
+    )
+  )
+    return "LOCAL";
+  if (list.some((t) => t.includes("comunidade"))) return "COMUNIDADE";
+
+  return "PROJETO";
+};
+
+/**
+ * Mapeia a linha de coins (+ coin_market_state) para o modelo usado pela Arena.
+ * Obs.: qualquer risk_zone que não seja HYPE/BOLHA cai em FRIO (inclui NEUTRO / null).
+ */
+const mapCoinToArenaToken = (row: CoinRow): ArenaToken => {
+  const cms = row.coin_market_state;
+  const zoneRaw = (cms?.risk_zone ?? "").toUpperCase();
+  const zone: MarketZone =
+    zoneRaw === "HYPE" || zoneRaw === "BOLHA" ? (zoneRaw as MarketZone) : "FRIO";
+
+  return {
+    id: row.id,
+    name: row.name,
+    ticker: row.symbol,
+    type: inferTokenType(row.tags),
+    zone,
+    price: normalizeNumber(cms?.price_current) || 0,
+    // Por enquanto, se você ainda não calcula variação diária / semanal,
+    // deixamos em 0 e você pode plugar depois em uma view.
+    change24h: 0,
+    change7d: 0,
+    volume24h: normalizeNumber(cms?.volume_24h_base),
+    // Usamos hype_score como "liquidez/perfil de atenção" só para ranking inicial.
+    liquidityScore: normalizeNumber(cms?.hype_score),
+    storyHook:
+      row.narrative_short ??
+      "Narrativa ainda não configurada. Este token é puramente especulativo.",
+    riskNote:
+      row.risk_disclaimer ??
+      "Token de risco extremo. Leia a narrativa completa antes de arriscar qualquer valor."
+  };
+};
+
+export default function ArenaPage() {
   const [sortKey, setSortKey] = useState<SortKey>("hype");
   const [typeFilter, setTypeFilter] = useState<TokenType | "ALL">("ALL");
 
+  const [tokens, setTokens] = useState<ArenaToken[]>([]);
+  const [hasTriedLoad, setHasTriedLoad] = useState(false);
+
+  const [selectedToken, setSelectedToken] = useState<ArenaToken | null>(null);
+  const [isTradeOpen, setIsTradeOpen] = useState(false);
+
+  // Carrega tokens direto de public.coins (+ coin_market_state)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadArenaTokens() {
+      try {
+        const { data, error } = await supabase
+          .from("coins")
+          .select(
+            `
+            id,
+            name,
+            symbol,
+            tags,
+            narrative_short,
+            risk_disclaimer,
+            status,
+            coin_market_state (
+              risk_zone,
+              price_current,
+              volume_24h_base,
+              hype_score
+            )
+          `
+          )
+          // Mostra pelo menos ACTIVE e DRAFT (pra você ver o NATY enquanto testa)
+          .in("status", ["ACTIVE", "DRAFT"]);
+
+        if (error) {
+          console.error("[ARENA] Erro ao carregar coins:", error);
+          return;
+        }
+
+        if (!data || cancelled) return;
+
+        const mapped = (data as CoinRow[]).map(mapCoinToArenaToken);
+        setTokens(mapped);
+      } catch (err) {
+        console.error("[ARENA] Erro inesperado ao carregar tokens:", err);
+      } finally {
+        if (!cancelled) setHasTriedLoad(true);
+      }
+    }
+
+    loadArenaTokens();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Base de dados usada pela Arena (DB > fallback > vazio)
+  const baseTokens: ArenaToken[] =
+    tokens.length > 0 ? tokens : hasTriedLoad ? FALLBACK_TOKENS : [];
+
   const filteredAndSorted = useMemo(() => {
-    let list = [...MOCK_TOKENS];
+    let list = [...baseTokens];
 
     if (typeFilter !== "ALL") {
       list = list.filter((t) => t.type === typeFilter);
@@ -128,7 +269,8 @@ export default function ArenaPage() {
         list.sort((a, b) => {
           const zw = zoneWeight[b.zone] - zoneWeight[a.zone];
           if (zw !== 0) return zw;
-          return b.volume24h - a.volume24h;
+          // em caso de empate, usamos “liquidez/hype_score”
+          return b.liquidityScore - a.liquidityScore;
         });
         break;
       }
@@ -144,22 +286,26 @@ export default function ArenaPage() {
     }
 
     return list;
-  }, [sortKey, typeFilter]);
+  }, [baseTokens, sortKey, typeFilter]);
 
   // Radar geral da Arena
   const highlightToken =
-    [...MOCK_TOKENS].sort((a, b) => b.change24h - a.change24h)[0] ?? null;
+    baseTokens.length > 0
+      ? [...baseTokens].sort((a, b) => b.change24h - a.change24h)[0]
+      : null;
 
-  const hypeCount = MOCK_TOKENS.filter((t) => t.zone === "HYPE").length;
-  const bolhaCount = MOCK_TOKENS.filter((t) => t.zone === "BOLHA").length;
-  const frioCount = MOCK_TOKENS.filter((t) => t.zone === "FRIO").length;
+  const hypeCount = baseTokens.filter((t) => t.zone === "HYPE").length;
+  const bolhaCount = baseTokens.filter((t) => t.zone === "BOLHA").length;
+  const frioCount = baseTokens.filter((t) => t.zone === "FRIO").length;
 
   const handleOpenToken = (token: ArenaToken) => {
-    router.push(`/token/${token.ticker.toLowerCase()}`);
+    setSelectedToken(token);
+    setIsTradeOpen(true);
   };
 
   const handlePrimaryAction = (token: ArenaToken) => {
-    router.push(`/token/${token.ticker.toLowerCase()}`);
+    setSelectedToken(token);
+    setIsTradeOpen(true);
   };
 
   const formatCurrency = (value: number) =>
@@ -173,6 +319,8 @@ export default function ArenaPage() {
     value >= 1000
       ? `${(value / 1000).toFixed(1).replace(".0", "")}k`
       : value.toString();
+
+  const hasAnyToken = filteredAndSorted.length > 0;
 
   return (
     <>
@@ -193,7 +341,7 @@ export default function ArenaPage() {
 
                 <p className="arena-subtitle">
                   Aqui você não vê “ativo seguro”. Você vê{" "}
-                  <strong>histórias sendo precificadas em tempo real</strong> —
+                  <strong>histórias sendo precificadas em tempo real</strong> — 
                   bares, padarias, pessoas, comunidades — que podem explodir de
                   hype, desmontar em horas ou simplesmente sumir.
                 </p>
@@ -275,17 +423,27 @@ export default function ArenaPage() {
                   </div>
 
                   <p className="hero-right-note">
-                    Esta é uma <strong>simulação histórica</strong>, usando a
-                    variação dos últimos 7 dias. Não é previsão, não é
-                    recomendação e não é promessa de que isso vá se repetir.
+                    Estes números são um{" "}
+                    <strong>recorte histórico/simulado</strong>. Não são
+                    previsão, nem recomendação, nem promessa de repetição.
                   </p>
                 </aside>
               )}
             </div>
           </section>
 
-          {/* 🔥 TICKER DE COTAÇÕES DA ARENA (usando a lista ordenada) */}
-          <MarketTicker tokens={filteredAndSorted} />
+          {/* 🔥 TICKER DE COTAÇÕES DA ARENA (usando a lista já ordenada) */}
+          <MarketTicker
+            tokens={filteredAndSorted.map((t) => ({
+              id: t.id,
+              name: t.name,
+              ticker: t.ticker,
+              price: t.price,
+              change24h: t.change24h,
+              type: t.type,
+              zone: t.zone
+            }))}
+          />
 
           {/* Toolbar: ordenação, filtro, legenda de risco */}
           <section className="arena-toolbar">
@@ -305,7 +463,9 @@ export default function ArenaPage() {
                   type="button"
                   className={
                     "arena-sort-option" +
-                    (sortKey === "top_gainers" ? " arena-sort-option--active" : "")
+                    (sortKey === "top_gainers"
+                      ? " arena-sort-option--active"
+                      : "")
                   }
                   onClick={() => setSortKey("top_gainers")}
                 >
@@ -315,7 +475,9 @@ export default function ArenaPage() {
                   type="button"
                   className={
                     "arena-sort-option" +
-                    (sortKey === "top_losers" ? " arena-sort-option--active" : "")
+                    (sortKey === "top_losers"
+                      ? " arena-sort-option--active"
+                      : "")
                   }
                   onClick={() => setSortKey("top_losers")}
                 >
@@ -348,7 +510,9 @@ export default function ArenaPage() {
                   type="button"
                   className={
                     "arena-filter-pill" +
-                    (typeFilter === "PESSOA" ? " arena-filter-pill--active" : "")
+                    (typeFilter === "PESSOA"
+                      ? " arena-filter-pill--active"
+                      : "")
                   }
                   onClick={() => setTypeFilter("PESSOA")}
                 >
@@ -358,7 +522,9 @@ export default function ArenaPage() {
                   type="button"
                   className={
                     "arena-filter-pill" +
-                    (typeFilter === "LOCAL" ? " arena-filter-pill--active" : "")
+                    (typeFilter === "LOCAL"
+                      ? " arena-filter-pill--active"
+                      : "")
                   }
                   onClick={() => setTypeFilter("LOCAL")}
                 >
@@ -368,7 +534,9 @@ export default function ArenaPage() {
                   type="button"
                   className={
                     "arena-filter-pill" +
-                    (typeFilter === "PROJETO" ? " arena-filter-pill--active" : "")
+                    (typeFilter === "PROJETO"
+                      ? " arena-filter-pill--active"
+                      : "")
                   }
                   onClick={() => setTypeFilter("PROJETO")}
                 >
@@ -422,7 +590,11 @@ export default function ArenaPage() {
               </p>
             </div>
 
-            {filteredAndSorted.length === 0 ? (
+            {!hasTriedLoad && !hasAnyToken ? (
+              <div className="arena-empty">
+                <p>Carregando a Arena de narrativas...</p>
+              </div>
+            ) : !hasAnyToken ? (
               <div className="arena-empty">
                 <p>Nenhum token encontrado com esses filtros.</p>
                 <p>Altere o tipo ou a ordenação para caçar outros movimentos.</p>
@@ -567,6 +739,15 @@ export default function ArenaPage() {
             </div>
           </section>
         </div>
+
+        <TokenTradePanel
+  token={selectedToken}
+  open={isTradeOpen && !!selectedToken}
+  onClose={() => {
+    setIsTradeOpen(false);
+    setSelectedToken(null);
+  }}
+/>
 
         <Footer3ustaquio />
       </main>

@@ -2628,3 +2628,678 @@ select.field-input:focus {
     font-size: 10px;
   }
 }
+/* TOP STRIP DEMO */
+.trade-panel-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+}
+
+.trade-strip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ff0055;
+  box-shadow: 0 0 10px rgba(255, 0, 85, 0.9);
+  animation: trade-strip-pulse 1.4s infinite;
+}
+
+@keyframes trade-strip-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.trade-strip-label {
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.trade-strip-text {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* GRID TOPO (RESUMO + TERMÔMETRO) */
+.trade-panel-top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.5fr);
+  gap: 14px;
+}
+
+@media (max-width: 768px) {
+  .trade-panel-top-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* já existiam: reaproveita cards */
+.trade-panel-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* TERMÔMETRO DE RISCO */
+.trade-risk-meter {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.trade-risk-meter-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 6px;
+}
+
+.trade-risk-meter-track {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.trade-risk-meter-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.45;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.trade-risk-meter-step--active {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.trade-risk-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.trade-risk-meter-step--active .trade-risk-dot {
+  background: linear-gradient(135deg, #ff0055, #ffdd00);
+  box-shadow: 0 0 14px rgba(255, 0, 85, 0.9);
+}
+
+.trade-risk-text {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* GRID PRINCIPAL: FORM + INSIGHTS */
+.trade-panel-main-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .trade-panel-main-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* INSIGHTS */
+.trade-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trade-insights-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.8rem;
+}
+
+.trade-insights-card--danger {
+  border-color: rgba(255, 0, 85, 0.7);
+  background: radial-gradient(circle at top left, rgba(255, 0, 85, 0.25), transparent 60%);
+}
+
+.trade-insights-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.trade-insights-text {
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+}
+
+.trade-risk-list {
+  list-style: disc;
+  padding-left: 16px;
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* (mantém o resto das classes que já estavam definidas:
+   .trade-panel, .trade-panel-backdrop, .trade-form, .trade-mode-btn, etc.) */
+/* BACKDROP */
+
+/* DRAWER PRINCIPAL */
+.trade-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 100%;
+  background: radial-gradient(circle at top left, #1b0b14 0, #050506 55%);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.9);
+  z-index: 80;
+  padding: 24px 24px 32px;
+  color: #f5f5f5;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+/* HEADER */
+.trade-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trade-panel-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trade-panel-token-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.trade-panel-token-ticker {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  font-weight: 600;
+}
+
+.trade-panel-zone-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.trade-panel-zone-pill.zone-hype {
+  background: rgba(255, 221, 0, 0.12);
+  color: #ffdd00;
+  border: 1px solid rgba(255, 221, 0, 0.6);
+}
+
+.trade-panel-zone-pill.zone-bolha {
+  background: rgba(255, 0, 85, 0.12);
+  color: #ff0055;
+  border: 1px solid rgba(255, 0, 85, 0.7);
+}
+
+.trade-panel-zone-pill.zone-frio {
+  background: rgba(0, 255, 255, 0.06);
+  color: #00ffff;
+  border: 1px solid rgba(0, 255, 255, 0.6);
+}
+
+.trade-panel-zone-pill.zone-neutro {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.trade-panel-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.trade-panel-subtitle {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.4;
+}
+
+.trade-panel-close-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* RESUMO */
+.trade-panel-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trade-summary-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.trade-summary-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.trade-summary-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* Toggle BUY / SELL */
+.trade-mode-toggle {
+  display: flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 4px;
+}
+
+.trade-mode-btn {
+  flex: 1;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.trade-mode-btn--active {
+  background: linear-gradient(90deg, #ff0055, #ff7b00);
+  color: #050505;
+  font-weight: 600;
+}
+
+/* FORM */
+.trade-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trade-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-field-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.trade-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.trade-input-prefix {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.trade-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.trade-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* BOTÕES RÁPIDOS */
+.trade-quick-amounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trade-quick-amount-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+/* ESTIMATIVA */
+.trade-estimate-box {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: radial-gradient(circle at top left, rgba(255, 0, 85, 0.25), transparent 60%);
+  border: 1px solid rgba(255, 0, 85, 0.6);
+  font-size: 0.8rem;
+}
+
+.trade-estimate-label {
+  display: block;
+  margin-bottom: 2px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.trade-estimate-value {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* SUBMIT + FEEDBACK */
+.trade-submit-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding-block: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.trade-feedback {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: #ffdd00;
+}
+
+/* DISCLAIMER */
+.trade-panel-disclaimer {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-panel-risk-note {
+  font-size: 0.78rem;
+  color: rgba(255, 180, 180, 0.9);
+}
+
+/* Reuso das cores positivas/negativas da Arena */
+.arena-value-pos {
+  color: #00ff9d;
+}
+
+.arena-value-neg {
+  color: #ff4f6b;
+}
+/* Compacta o drawer */
+.trade-panel--compact {
+  max-width: 420px;
+  padding: 16px 18px 18px;
+}
+
+/* Header mais limpo */
+.trade-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 12px;
+}
+
+/* Linha de resumo (preço / 24h / 7d) */
+.trade-panel-summary-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.trade-summary-chip {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trade-summary-chip-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.trade-summary-chip-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Form mais compacto */
+.trade-form--compact {
+  margin-top: 4px;
+}
+
+/* Linha de estimativa simples */
+.trade-estimate-line {
+  margin-top: 8px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.trade-estimate-label {
+  opacity: 0.8;
+}
+
+.trade-estimate-value {
+  font-weight: 600;
+}
+
+/* Disclaimer mais curto */
+.trade-panel-disclaimer--compact {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+/* Backdrop cobrindo a tela toda */
+.trade-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 40;
+}
+
+/* Drawer base – nunca passa de 100vw/100vh */
+.trade-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: min(420px, 100vw);
+  max-height: 100vh;
+  background: #050505;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -24px 0 80px rgba(0, 0, 0, 0.9);
+  z-index: 50;
+  display: flex;
+}
+
+/* Conteúdo interno com scroll próprio */
+.trade-panel-scroll {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+/* Versão compacta mantida */
+.trade-panel--compact {
+  border-radius: 0;
+}
+
+/* MOBILE: vira “bottom sheet” e ocupa 100% da largura */
+@media (max-width: 768px) {
+  .trade-panel {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-width: 100vw;
+    max-height: 90vh;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px 16px 0 0;
+  }
+
+  .trade-panel-scroll {
+    padding: 14px 14px 16px;
+  }
+}
+
+/* Header, chips, etc – podem ser os mesmos que já está usando */
+.trade-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.trade-panel-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 2px 0 4px;
+}
+
+.trade-panel-subtitle {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Resumo em chips */
+.trade-panel-summary-row {
+  display: flex;
+  gap: 8px;
+}
+
+.trade-summary-chip {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trade-summary-chip-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.trade-summary-chip-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Estimativa enxuta */
+.trade-estimate-line {
+  margin-top: 8px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Disclaimer compacto */
+.trade-panel-disclaimer--compact {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
