@@ -11,6 +11,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
+import { DepositPixModal } from "./DepositPixModal"; // ajuste path
 
 type MarketZone = "FRIO" | "HYPE" | "BOLHA" | "NEUTRO";
 
@@ -322,6 +323,9 @@ export function InlineTokenTradePanel({
     [slippagePct]
   );
 
+  const [depositOpen, setDepositOpen] = useState(false);
+
+
   const isBuy = mode === "BUY";
   const isMarket = orderType === "MARKET";
   const isLimit = orderType === "LIMIT";
@@ -364,18 +368,18 @@ export function InlineTokenTradePanel({
               setCtx((prev) =>
                 prev
                   ? {
-                      ...prev,
-                      market: {
-                        ...prev.market,
-                        base_reserve: Number(next.base_reserve),
-                        coin_reserve: Number(next.coin_reserve),
-                        price_current: Number(next.price_current),
-                        risk_zone: next.risk_zone,
-                        hype_score: next.hype_score,
-                        volume_24h_base: Number(next.volume_24h_base),
-                        trades_24h: Number(next.trades_24h),
-                      },
-                    }
+                    ...prev,
+                    market: {
+                      ...prev.market,
+                      base_reserve: Number(next.base_reserve),
+                      coin_reserve: Number(next.coin_reserve),
+                      price_current: Number(next.price_current),
+                      risk_zone: next.risk_zone,
+                      hype_score: next.hype_score,
+                      volume_24h_base: Number(next.volume_24h_base),
+                      trades_24h: Number(next.trades_24h),
+                    },
+                  }
                   : prev
               );
 
@@ -420,6 +424,21 @@ export function InlineTokenTradePanel({
       if (channel) supabase.removeChannel(channel);
     };
   }, [token.id]);
+
+
+  const refreshContext = async () => {
+    try {
+      const data = await invokeArenaOrThrow<ContextResp>({
+        action: "context",
+        coin_id: token.id,
+      });
+      setCtx(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+
 
   // ---------------------------
   // Orderbook loader (15min)
@@ -494,7 +513,7 @@ export function InlineTokenTradePanel({
   }, [token.id]);
 
   // ---------------------------
- // Candles loader
+  // Candles loader
   // ---------------------------
   useEffect(() => {
     let cancelled = false;
@@ -509,8 +528,8 @@ export function InlineTokenTradePanel({
           range === "1h"
             ? 1 * 60 * 60 * 1000
             : range === "4h"
-            ? 4 * 60 * 60 * 1000
-            : 24 * 60 * 60 * 1000;
+              ? 4 * 60 * 60 * 1000
+              : 24 * 60 * 60 * 1000;
 
         const { data: c1m, error: cErr } = await supabase
           .from("coin_candles_1m")
@@ -811,23 +830,32 @@ export function InlineTokenTradePanel({
     }
   }, [isLimit, parsedLimit, isBuy, parsedBase, parsedCoin]);
 
+  //Dinheiro curto
+  const shortfall = useMemo(() => {
+    if (!isBuy) return 0;
+    const need = parsedBase || 0;
+    const have = baseBalance || 0;
+    return Math.max(0, need - have);
+  }, [isBuy, parsedBase, baseBalance]);
+
+
   const zoneLabel =
     token.zone === "HYPE"
       ? "Hype ativo"
       : token.zone === "BOLHA"
-      ? "Zona da bolha"
-      : token.zone === "FRIO"
-      ? "Mercado frio"
-      : "Neutro";
+        ? "Zona da bolha"
+        : token.zone === "FRIO"
+          ? "Mercado frio"
+          : "Neutro";
 
   const zoneClass =
     token.zone === "HYPE"
       ? "zone-hype"
       : token.zone === "BOLHA"
-      ? "zone-bolha"
-      : token.zone === "FRIO"
-      ? "zone-frio"
-      : "zone-neutro";
+        ? "zone-bolha"
+        : token.zone === "FRIO"
+          ? "zone-frio"
+          : "zone-neutro";
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", {
@@ -857,8 +885,8 @@ export function InlineTokenTradePanel({
         ? canBuyMarket
         : canSellMarket
       : isBuy
-      ? canBuyLimit
-      : canSellLimit;
+        ? canBuyLimit
+        : canSellLimit;
 
   // chart domain
   const yDomain = useMemo<[number, number]>(() => {
@@ -937,14 +965,12 @@ export function InlineTokenTradePanel({
         const t = resp.trade;
         if (mode === "BUY") {
           setFeedback(
-            `Compra executada. Recebeu ${formatCoin(t.amount_coin)} ${
-              token.ticker
+            `Compra executada. Recebeu ${formatCoin(t.amount_coin)} ${token.ticker
             } a ${formatCurrency(t.price_effective)}.`
           );
         } else {
           setFeedback(
-            `Venda executada. Vendeu ${formatCoin(t.amount_coin)} ${
-              token.ticker
+            `Venda executada. Vendeu ${formatCoin(t.amount_coin)} ${token.ticker
             } e recebeu ${formatCurrency(
               t.amount_base - t.fee_total_base
             )} aprox. após taxas.`
@@ -953,8 +979,7 @@ export function InlineTokenTradePanel({
       } else if (resp.order) {
         const o = resp.order as LimitOrderResp;
         setFeedback(
-          `Ordem LIMIT criada (#${String(o.id).slice(0, 6)}). ${
-            mode === "BUY" ? "Comprando" : "Vendendo"
+          `Ordem LIMIT criada (#${String(o.id).slice(0, 6)}). ${mode === "BUY" ? "Comprando" : "Vendendo"
           } a ${formatCurrency(Number(o.price_limit))}.`
         );
         setMyOrders((prev) => [o, ...prev]);
@@ -974,22 +999,22 @@ export function InlineTokenTradePanel({
 
         const impactTxt = impactRaw
           ? Number(impactRaw).toLocaleString("pt-BR", {
-              maximumFractionDigits: 2,
-            })
+            maximumFractionDigits: 2,
+          })
           : null;
 
         const slipTxt = slippageRaw
           ? Number(slippageRaw).toLocaleString("pt-BR", {
-              maximumFractionDigits: 2,
-            })
+            maximumFractionDigits: 2,
+          })
           : null;
 
         setFeedback(
           `Ordem doida demais pro pool — corta o tamanho ou para de querer quebrar o mercado. ` +
-            `Proteção anti-impacto acionada (circuit breaker). ` +
-            `Essa ordem daria impacto${impactTxt ? ` ~${impactTxt}%` : ""} ` +
-            `e slippage${slipTxt ? ` ~${slipTxt}%` : ""} no pool. ` +
-            `Reduza o valor ou use uma LIMIT mais distante do spread.`
+          `Proteção anti-impacto acionada (circuit breaker). ` +
+          `Essa ordem daria impacto${impactTxt ? ` ~${impactTxt}%` : ""} ` +
+          `e slippage${slipTxt ? ` ~${slipTxt}%` : ""} no pool. ` +
+          `Reduza o valor ou use uma LIMIT mais distante do spread.`
         );
         return;
       }
@@ -1484,8 +1509,8 @@ export function InlineTokenTradePanel({
                           ? `${buyEst.impactPct.toFixed(2)}%`
                           : "--"
                         : sellEst
-                        ? `${sellEst.impactPct.toFixed(2)}%`
-                        : "--"}
+                          ? `${sellEst.impactPct.toFixed(2)}%`
+                          : "--"}
                     </div>
                   </div>
                   <div className="inline-adv-box">
@@ -1496,8 +1521,8 @@ export function InlineTokenTradePanel({
                           ? formatCurrency(buyEst.newPrice)
                           : "--"
                         : sellEst
-                        ? formatCurrency(sellEst.newPrice)
-                        : "--"}
+                          ? formatCurrency(sellEst.newPrice)
+                          : "--"}
                     </div>
                   </div>
                 </div>
@@ -1516,21 +1541,44 @@ export function InlineTokenTradePanel({
           {isSubmitting
             ? "Executando..."
             : isBuy
-            ? isMarket
-              ? "Comprar MARKET assumindo o risco"
-              : "Criar BUY LIMIT"
-            : isMarket
-            ? "Vender MARKET assumindo o risco"
-            : "Criar SELL LIMIT"}
+              ? isMarket
+                ? "Comprar MARKET assumindo o risco"
+                : "Criar BUY LIMIT"
+              : isMarket
+                ? "Vender MARKET assumindo o risco"
+                : "Criar SELL LIMIT"}
         </button>
 
-        {!isSubmitting && !canSubmit && (
+        {/* {!isSubmitting && !canSubmit && (
           <p className="inline-feedback inline-feedback--error">
             {isMarket
               ? "Valor inválido ou saldo insuficiente."
               : "Preencha o preço limite e um valor válido (e tenha saldo)."}
           </p>
+        )} */}
+
+        {!isSubmitting && !canSubmit && (
+          <div className="inline-feedback inline-feedback--error" style={{ display: "grid", gap: 8 }}>
+            <p>
+              {isMarket
+                ? "Saldo curto. Essa ordem não passa."
+                : "Preço/valor inválido ou saldo insuficiente."}
+            </p>
+
+            {/* CTA só faz sentido em BUY sem base */}
+            {isBuy && shortfall > 0 && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setDepositOpen(true)}
+                style={{ width: "100%" }}
+              >
+                Turbinar carteira via PIX
+              </button>
+            )}
+          </div>
         )}
+
 
         {feedback && <p className="inline-feedback">{feedback}</p>}
       </form>
@@ -1554,8 +1602,8 @@ export function InlineTokenTradePanel({
                 o.amount_coin
                   ? (o.filled_coin_total / o.amount_coin) * 100
                   : o.amount_base
-                  ? (o.filled_base_total / o.amount_base) * 100
-                  : 0;
+                    ? (o.filled_base_total / o.amount_base) * 100
+                    : 0;
 
               return (
                 <div key={o.id} className="inline-order-row">
@@ -1600,6 +1648,13 @@ export function InlineTokenTradePanel({
       <div className="inline-risk">
         <strong>Risco:</strong> {token.riskNote}
       </div>
+      <DepositPixModal
+        open={depositOpen}
+        onClose={() => setDepositOpen(false)}
+        suggestedAmount={shortfall || parsedBase || 50}
+        onPaid={refreshContext}
+      />
+
     </section>
   );
 }

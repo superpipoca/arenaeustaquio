@@ -4219,3 +4219,15 @@ begin
 end;
 $$;
 
+create table if not exists public.pix_deposits (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id),
+  wallet_id uuid not null references public.wallets(id),
+  amount_base numeric not null,
+  status text not null default 'PENDING',
+  provider text not null default 'CELCOIN',
+  provider_charge_id text,
+  provider_payload jsonb,
+  created_at timestamptz default now(),
+  confirmed_at timestamptz
+);
