@@ -4348,3 +4348,106 @@ create trigger trg_users_create_wallet
 after insert on users
 for each row
 execute function trg_create_wallet_for_user();
+
+create or replace function public.confirm_deposit_by_ref(
+  p_provider text,
+  p_provider_ref text,
+  p_amount_base numeric
+)
+returns table (
+  deposit_id uuid,
+  wallet_id uuid,
+  old_status public.tx_status,
+  new_status public.tx_status,
+  credited_base numeric
+)
+language plpgsql
+security definer
+as $$
+declare
+  v_dep public.deposits%rowtype;
+  v_old_balance numeric(30,8);
+begin
+  if p_provider_ref is null or length(trim(p_provider_ref)) = 0 then
+    raise exception 'provider_ref obrigatório';
+  end if;
+
+  if p_amount_base is null or p_amount_base <= 0 then
+    raise exception 'amount_base inválido';
+  end if;
+
+  /*
+    1) trava o depósito PENDING (lock) pra impedir corrida
+  */
+  select *
+    into v_dep
+  from public.deposits d
+  where d.provider = p_provider
+    and d.provider_ref = p_provider_ref
+  order by d.created_at desc
+  limit 1
+  for update;
+
+  if not found then
+    raise exception 'Depósito não encontrado para provider_ref=%', p_provider_ref;
+  end if;
+
+  deposit_id := v_dep.id;
+  wallet_id := v_dep.wallet_id;
+  old_status := v_dep.status;
+
+  /*
+    2) idempotência: se já confirmou, não credita de novo
+  */
+  if v_dep.status = 'COMPLETED' then
+    new_status := v_dep.status;
+    credited_base := 0;
+    return next;
+    return;
+  end if;
+
+  if v_dep.status <> 'PENDING' then
+    raise exception 'Depósito não está PENDING (status atual=%)', v_dep.status;
+  end if;
+
+  /*
+    3) checa divergência de valor (proteção anti-fraude/erro)
+       você pode tolerar diferença mínima se quiser
+  */
+  if v_dep.amount_base <> p_amount_base then
+    raise exception
+      'Valor divergente: deposit.amount_base=% provider.amount_base=%',
+      v_dep.amount_base, p_amount_base;
+  end if;
+
+  /*
+    4) confirma o depósito
+  */
+  update public.deposits
+     set status = 'COMPLETED',
+         updated_at = now()
+   where id = v_dep.id;
+
+  /*
+    5) credita base na carteira
+       (trava wallet implicitamente na atualização)
+  */
+  select balance_base into v_old_balance
+    from public.wallets
+   where id = v_dep.wallet_id
+   for update;
+
+  update public.wallets
+     set balance_base = balance_base + v_dep.amount_base,
+         updated_at = now()
+   where id = v_dep.wallet_id;
+
+  new_status := 'COMPLETED';
+  credited_base := v_dep.amount_base;
+
+  return next;
+end;
+$$;
+
+revoke all on function public.confirm_deposit_by_ref(text,text,numeric) from public;
+grant execute on function public.confirm_deposit_by_ref(text,text,numeric) to service_role;
