@@ -4231,3 +4231,120 @@ create table if not exists public.pix_deposits (
   created_at timestamptz default now(),
   confirmed_at timestamptz
 );
+
+
+create or replace function public.trg_create_wallet_for_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.wallets (user_id, wallet_type, label, provider, balance_base, is_active)
+  values (new.id, 'USER', 'Carteira principal', 'INTERNAL', 0, true);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_users_create_wallet on public.users;
+create trigger trg_users_create_wallet
+after insert on public.users
+for each row execute function public.trg_create_wallet_for_user();
+
+
+-- ===========================================
+-- RPC: cria/atualiza perfil e cria wallet USER
+-- Usa auth.uid() do Supabase
+-- ===========================================
+create or replace function public.rpc_create_user_and_wallet(
+  p_username      text default null,
+  p_display_name  text default null,
+  p_avatar_url    text default null,
+  p_bio           text default null,
+  p_role          public.user_role default 'TRADER'
+)
+returns public.users
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_auth_id uuid;
+  v_user public.users;
+begin
+  -- pega o usuário logado no Supabase Auth
+  v_auth_id := auth.uid();
+  if v_auth_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  -- cria (ou atualiza) o perfil em public.users
+  insert into public.users (
+    auth_user_id,
+    role,
+    username,
+    display_name,
+    avatar_url,
+    bio
+  )
+  values (
+    v_auth_id,
+    coalesce(p_role, 'TRADER'::public.user_role),
+    p_username,
+    p_display_name,
+    p_avatar_url,
+    p_bio
+  )
+  on conflict (auth_user_id) do update
+    set
+      role         = coalesce(excluded.role, public.users.role),
+      username     = coalesce(excluded.username, public.users.username),
+      display_name = coalesce(excluded.display_name, public.users.display_name),
+      avatar_url   = coalesce(excluded.avatar_url, public.users.avatar_url),
+      bio          = coalesce(excluded.bio, public.users.bio),
+      updated_at   = now()
+  returning * into v_user;
+
+  -- cria a wallet USER padrão se ainda não existir
+  insert into public.wallets (
+    user_id,
+    wallet_type,
+    label,
+    provider,
+    balance_base,
+    is_active
+  )
+  values (
+    v_user.id,
+    'USER'::public.wallet_type,
+    'Wallet Principal',
+    'INTERNAL',
+    0,
+    true
+  )
+  on conflict (user_id) where wallet_type = 'USER'::public.wallet_type
+  do nothing;
+
+  return v_user;
+end;
+$$;
+
+-- Permissões
+revoke all on function public.rpc_create_user_and_wallet from public;
+grant execute on function public.rpc_create_user_and_wallet to authenticated;
+
+
+create unique index if not exists idx_wallets_unique_user_wallet
+on public.wallets (user_id)
+where wallet_type = 'USER'::public.wallet_type;
+
+drop trigger if exists trg_users_create_wallet on public.users;
+
+alter table public.users
+add constraint users_auth_user_id_key unique (auth_user_id);
+
+create trigger trg_users_create_wallet
+after insert on users
+for each row
+execute function trg_create_wallet_for_user();
