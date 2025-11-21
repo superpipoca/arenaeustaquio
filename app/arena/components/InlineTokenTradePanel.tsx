@@ -224,7 +224,7 @@ const tryReadResponseBody = async (resp: Response): Promise<string | null> => {
     return null;
   }
 };
-
+ 
 
 // ✅ wrapper único: loga error.context e nunca deixa `invoke` vazar erro genérico
 const invokeArenaOrThrow = async <T = any>(body: any): Promise<T> => {
