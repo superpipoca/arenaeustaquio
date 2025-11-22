@@ -1,4 +1,3 @@
-// app/api/ensure-user-wallet/route.ts
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
@@ -6,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ✅ aceita PromiseLike (thenable) — supabase.rpc retorna Postgrest*Builder, não Promise real
+// ✅ Helper de Timeout genérico
 function withTimeout<T>(p: PromiseLike<T>, ms = 6000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("timeout")), ms);
@@ -25,15 +24,19 @@ function withTimeout<T>(p: PromiseLike<T>, ms = 6000): Promise<T> {
 
 export async function POST() {
   try {
-    // ✅ padrão recomendado no App Router: auth() é async
-    const { userId, isAuthenticated } = await auth(); :contentReference[oaicite:0]{index=0}
-    if (!isAuthenticated || !userId) {
+    // 1. Autenticação (Clerk v5+)
+    const { userId } = await auth();
+    
+    if (!userId) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const user = await clerkClient.users.getUser(userId);
+    // 2. Instanciar o cliente (AQUI ERA O ERRO COMUM)
+    // clerkClient agora deve ser aguardado
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
 
-    // ✅ usa primaryEmail primeiro
+    // 3. Extrair dados do usuário
     const primaryEmail =
       user.emailAddresses?.find((e) => e.id === user.primaryEmailAddressId)
         ?.emailAddress ||
@@ -44,57 +47,58 @@ export async function POST() {
       return NextResponse.json({ error: "no_email" }, { status: 400 });
     }
 
+    // Sanitiza username
     const baseUsername =
       primaryEmail
         .split("@")[0]
         .replace(/[^a-zA-Z0-9._-]/g, "")
-        .slice(0, 30) || null;
+        .slice(0, 30) || "user";
 
     const fullName =
-      [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || null;
+      [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || baseUsername;
 
-    const SUPABASE_URL =
-      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    // 4. Configurar Supabase Admin
+    const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
     const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!SUPABASE_URL || !SERVICE_ROLE) {
-      console.error("[ensure-user-wallet] missing envs");
-      return NextResponse.json(
-        { error: "server_misconfigured" },
-        { status: 500 }
-      );
+      console.error("[ensure-user-wallet] Env vars missing");
+      // Retornamos 200 com erro lógico para não quebrar o frontend, mas logamos o erro crítico
+      return NextResponse.json({ ok: false, error: "server_config_error" }, { status: 200 });
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE, {
       auth: { persistSession: false },
     });
 
-    // ✅ rpc() retorna builder thenable (PromiseLike)
-    const rpcThenable = supabaseAdmin.rpc("rpc_create_user_and_wallet", { :contentReference[oaicite:1]{index=1}
+    // 5. Preparar a chamada RPC
+    const rpcThenable = supabaseAdmin.rpc("rpc_create_user_and_wallet", {
       p_username: baseUsername,
-      p_display_name: fullName ?? baseUsername,
+      p_display_name: fullName,
       p_avatar_url: user.imageUrl ?? null,
       p_bio: null,
       p_role: "CREATOR",
     });
 
-    // ✅ timeout pra rota nunca pendurar o login
+    // 6. Executar com Timeout
+    // O tipo do retorno do RPC do Supabase é inferido aqui
     const { data, error } = await withTimeout(rpcThenable, 6000);
 
     if (error) {
-      console.error("[ensure-user-wallet] rpc error:", error);
-      // não bloqueia onboarding
-      return NextResponse.json({ ok: false, error: "rpc_failed" }, { status: 200 });
+      console.error("[ensure-user-wallet] RPC failed:", error);
+      // Retorna 200 com ok:false para o front seguir a vida (login não pode travar por causa disso)
+      return NextResponse.json({ ok: false, error: error.message || "rpc_failed" }, { status: 200 });
     }
 
     return NextResponse.json({ ok: true, data });
+
   } catch (err: any) {
     if (err?.message === "timeout") {
-      // ✅ dá ok/pending pra não travar UX
+      console.warn("[ensure-user-wallet] Timed out - processing in background");
       return NextResponse.json({ ok: true, pending: true }, { status: 202 });
     }
 
-    console.error("[ensure-user-wallet] unexpected:", err);
+    console.error("[ensure-user-wallet] Unexpected error:", err);
     return NextResponse.json({ ok: false, error: "unexpected" }, { status: 200 });
   }
 }

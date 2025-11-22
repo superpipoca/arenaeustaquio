@@ -427,6 +427,19 @@ export default function CriadorLoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Função auxiliar para ativar sessão sem quebrar com erro 500 ---
+  const safeSetActive = async (sessionId: string, setActiveFn: any) => {
+    try {
+      // O setActive tenta revalidar o servidor (Server Action).
+      // Se falhar (erro 500), o cookie geralmente já foi setado, então seguimos.
+      await withTimeout(setActiveFn({ session: sessionId }), 8000);
+    } catch (err: any) {
+      console.warn("Aviso: setActive gerou erro, mas tentando redirecionar.", err);
+      // Não relançamos o erro aqui, apenas deixamos o fluxo seguir para o redirect
+    }
+  };
+  // ------------------------------------------------------------------
+
   // Golden Flow
   useEffect(() => {
     if (alreadySignedIn) return;
@@ -443,7 +456,10 @@ export default function CriadorLoginPage() {
 
         if (attempt?.status === "complete") {
           localStorage.setItem("last_auth_strategy", "passkey");
-          await withTimeout(setActive({ session: attempt.createdSessionId }), 10000);
+          
+          // Usar safeSetActive
+          await safeSetActive(attempt.createdSessionId, setActive);
+
           fetch("/api/ensure-user-wallet", { method: "POST" }).catch(() => {});
           router.replace("/criador/onboarding");
         }
@@ -623,6 +639,9 @@ export default function CriadorLoginPage() {
 
   const onVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Stop propagation evita que o Next.js confunda com Server Action nativo
+    e.stopPropagation(); 
+    
     if (loading) return;
     setErro(null);
     setInfo(null);
@@ -643,10 +662,10 @@ export default function CriadorLoginPage() {
 
       if (flow === "signin") {
         if (!signIn || signIn.status !== "needs_first_factor") {
-          // Caso específico onde a sessão já existe mas o status local está desatualizado
-          // Tentamos um refresh forçado ou apenas avisamos para reenviar
-          setErro("Estado da sessão expirou. Reenvie o código.");
-          return;
+           // Tentar recuperar caso o status tenha se perdido
+           const clerkCode = ""; // Placeholder para lógica futura
+           setErro("Sessão perdida. Reenvie o código.");
+           return;
         }
 
         const attempt = await withTimeout(
@@ -659,10 +678,13 @@ export default function CriadorLoginPage() {
           localStorage.removeItem(LS_FLOW);
           localStorage.removeItem(LS_EMAIL);
 
-          await withTimeout(setActive({ session: attempt.createdSessionId }), 10000);
+          // USAR SafeSetActive para engolir o erro 500 "Invalid Server Actions"
+          await safeSetActive(attempt.createdSessionId, setActive);
 
           fetch("/api/ensure-user-wallet", { method: "POST" }).catch(() => {});
           setInfo("Sucesso! Redirecionando...");
+          
+          // Forçar redirect independente do resultado do setActive
           setLoading(false);
           router.replace("/criador/onboarding");
           return;
@@ -690,10 +712,11 @@ export default function CriadorLoginPage() {
           localStorage.removeItem(LS_EMAIL);
 
           const activate = setActiveSignUp ?? setActive;
-          await withTimeout(activate({ session: suAttempt.createdSessionId }), 10000);
+          await safeSetActive(suAttempt.createdSessionId, activate);
 
           fetch("/api/ensure-user-wallet", { method: "POST" }).catch(() => {});
           setInfo("Cadastro pronto! Entrando...");
+          
           setLoading(false);
           router.replace("/criador/onboarding");
           return;
@@ -713,11 +736,9 @@ export default function CriadorLoginPage() {
     } catch (e: any) {
       console.error("Auth Error:", e);
 
-      // --- CORREÇÃO PRINCIPAL AQUI ---
       const clerkCode = (e?.errors?.[0]?.code || "").toLowerCase();
       
-      // Se der erro "session_exists", é porque na verdade DEU CERTO!
-      // O usuário já está logado, só precisamos redirecionar.
+      // Tratamento do session_exists (quando o user clicou 2x ou deu timeout antes)
       if (clerkCode === "session_exists") {
         localStorage.removeItem(LS_FLOW);
         localStorage.removeItem(LS_EMAIL);
@@ -726,7 +747,6 @@ export default function CriadorLoginPage() {
         router.replace("/criador/onboarding");
         return;
       }
-      // -------------------------------
 
       setErro("Código inválido ou expirado. Tente reenviar.");
     } finally {

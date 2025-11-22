@@ -1,12 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 
 export default function PasskeyUpsellModal() {
   const { user, isLoaded } = useUser();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // fecha com ESC
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   useEffect(() => {
     if (!isLoaded || !user) return;
@@ -26,6 +36,8 @@ export default function PasskeyUpsellModal() {
     }
   }, [isLoaded, user]);
 
+  const close = useCallback(() => setOpen(false), []);
+
   const createPasskey = async () => {
     if (!user) return;
     setLoading(true);
@@ -44,29 +56,45 @@ export default function PasskeyUpsellModal() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 grid place-items-center p-4 z-50">
-      <div className="w-full max-w-sm bg-[#121212] border border-[#333] rounded-2xl p-6">
-        <h2 className="text-lg font-bold mb-2">
-          Quer entrar mais rápido da próxima vez?
-        </h2>
-        <p className="text-sm text-neutral-300 mb-4">
-          Ative a entrada com sua digital/FaceID. Sem senha, sem código.
-        </p>
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="passkey-upsell-title"
+      aria-describedby="passkey-upsell-desc"
+      onMouseDown={(e) => {
+        // clique fora fecha
+        if (e.target === e.currentTarget) close();
+      }}
+    >
+      <div className="modal-card" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-kicker">Autenticação mais rápida</div>
+          <h2 id="passkey-upsell-title" className="modal-title">
+            Quer entrar mais rápido da próxima vez?
+          </h2>
+          <p id="passkey-upsell-desc" className="modal-text">
+            Ative a entrada com sua digital/FaceID. Sem senha, sem código e com
+            menos fricção.
+          </p>
+        </div>
 
-        <div className="flex gap-2">
+        <div className="modal-actions">
           <button
             onClick={createPasskey}
             disabled={loading}
-            className="flex-1 rounded-xl bg-[#00ffff] text-black font-semibold px-4 py-3 disabled:opacity-60"
+            className="btn-primary modal-btn"
           >
             {loading ? "Ativando..." : "Ativar Passkey"}
           </button>
-          <button
-            onClick={() => setOpen(false)}
-            className="flex-1 rounded-xl border border-[#333] px-4 py-3 text-neutral-300 hover:text-white"
-          >
+
+          <button onClick={close} className="btn-outline modal-btn">
             Agora não
           </button>
+        </div>
+
+        <div className="modal-footnote">
+          Você continua podendo usar e-mail/OTP quando quiser.
         </div>
       </div>
     </div>
