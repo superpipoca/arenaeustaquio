@@ -4349,42 +4349,105 @@ after insert on users
 for each row
 execute function trg_create_wallet_for_user();
 
-create table if not exists public.pix_webhooks (
-  id uuid primary key default gen_random_uuid(),
-  provider text not null default 'CELCOIN',
-  event_type text null,
-  provider_event_id text not null,
-  status text null,
-  payload jsonb not null,
-  received_at timestamptz not null default now()
-);
+create or replace function public.confirm_deposit_by_ref(
+  p_provider text,
+  p_provider_ref text,
+  p_amount_base numeric
+)
+returns table (
+  deposit_id uuid,
+  wallet_id uuid,
+  old_status public.tx_status,
+  new_status public.tx_status,
+  credited_base numeric
+)
+language plpgsql
+security definer
+as $$
+declare
+  v_dep public.deposits%rowtype;
+  v_old_balance numeric(30,8);
+begin
+  if p_provider_ref is null or length(trim(p_provider_ref)) = 0 then
+    raise exception 'provider_ref obrigatório';
+  end if;
 
--- idempotência: não duplica o mesmo evento
-create unique index if not exists pix_webhooks_provider_event_id_key
-  on public.pix_webhooks (provider, provider_event_id);
+  if p_amount_base is null or p_amount_base <= 0 then
+    raise exception 'amount_base inválido';
+  end if;
 
+  /*
+    1) trava o depósito PENDING (lock) pra impedir corrida
+  */
+  select *
+    into v_dep
+  from public.deposits d
+  where d.provider = p_provider
+    and d.provider_ref = p_provider_ref
+  order by d.created_at desc
+  limit 1
+  for update;
 
-create table if not exists public.celcoin_webhooks (
-  id uuid primary key default gen_random_uuid(),
-  received_at timestamptz not null default now(),
+  if not found then
+    raise exception 'Depósito não encontrado para provider_ref=%', p_provider_ref;
+  end if;
 
-  entity text not null,
-  status text not null,
-  create_timestamp timestamptz null,
+  deposit_id := v_dep.id;
+  wallet_id := v_dep.wallet_id;
+  old_status := v_dep.status;
 
-  -- conteúdo específico do evento
-  body jsonb not null,
-  -- payload inteiro pra auditoria
-  raw jsonb not null,
+  /*
+    2) idempotência: se já confirmou, não credita de novo
+  */
+  if v_dep.status = 'COMPLETED' then
+    new_status := v_dep.status;
+    credited_base := 0;
+    return next;
+    return;
+  end if;
 
-  -- chave de idempotência p/ não duplicar evento
-  idempotency_key text unique,
+  if v_dep.status <> 'PENDING' then
+    raise exception 'Depósito não está PENDING (status atual=%)', v_dep.status;
+  end if;
 
-  processed boolean not null default false,
-  processed_at timestamptz null,
-  error_message text null
-);
+  /*
+    3) checa divergência de valor (proteção anti-fraude/erro)
+       você pode tolerar diferença mínima se quiser
+  */
+  if v_dep.amount_base <> p_amount_base then
+    raise exception
+      'Valor divergente: deposit.amount_base=% provider.amount_base=%',
+      v_dep.amount_base, p_amount_base;
+  end if;
 
-create index if not exists idx_celcoin_webhooks_entity on public.celcoin_webhooks(entity);
-create index if not exists idx_celcoin_webhooks_status on public.celcoin_webhooks(status);
-create index if not exists idx_celcoin_webhooks_received_at on public.celcoin_webhooks(received_at);
+  /*
+    4) confirma o depósito
+  */
+  update public.deposits
+     set status = 'COMPLETED',
+         updated_at = now()
+   where id = v_dep.id;
+
+  /*
+    5) credita base na carteira
+       (trava wallet implicitamente na atualização)
+  */
+  select balance_base into v_old_balance
+    from public.wallets
+   where id = v_dep.wallet_id
+   for update;
+
+  update public.wallets
+     set balance_base = balance_base + v_dep.amount_base,
+         updated_at = now()
+   where id = v_dep.wallet_id;
+
+  new_status := 'COMPLETED';
+  credited_base := v_dep.amount_base;
+
+  return next;
+end;
+$$;
+
+revoke all on function public.confirm_deposit_by_ref(text,text,numeric) from public;
+grant execute on function public.confirm_deposit_by_ref(text,text,numeric) to service_role;
