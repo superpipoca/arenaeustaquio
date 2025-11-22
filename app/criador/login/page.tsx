@@ -358,7 +358,7 @@ type PendingFlow = "signin" | "signup" | null;
 const LS_FLOW = "pending_flow";
 const LS_EMAIL = "pending_email";
 
-// Timeout utility: Garante que nenhuma Promise fique pendurada pra sempre
+// Timeout utility
 const withTimeout = async <T,>(p: Promise<T>, ms = 15000) => {
   let t: any;
   const timeout = new Promise<never>((_, rej) => {
@@ -389,7 +389,6 @@ export default function CriadorLoginPage() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
 
-  // identificação mínima no signup
   const [needsNameForSignup, setNeedsNameForSignup] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -411,14 +410,12 @@ export default function CriadorLoginPage() {
 
   const [passkeyAttempted, setPasskeyAttempted] = useState(false);
 
-  // Captcha mount helper
   const waitForCaptchaMount = () =>
     new Promise<void>((resolve) => {
       if (typeof window === "undefined") return resolve();
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });
 
-  // restore state on refresh
   useEffect(() => {
     const savedFlow = (localStorage.getItem(LS_FLOW) as PendingFlow) || null;
     const savedEmail = localStorage.getItem(LS_EMAIL) || "";
@@ -430,7 +427,7 @@ export default function CriadorLoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Golden Flow: try discoverable passkey on open
+  // Golden Flow
   useEffect(() => {
     if (alreadySignedIn) return;
     if (!signInLoaded || !signIn || passkeyAttempted) return;
@@ -439,27 +436,23 @@ export default function CriadorLoginPage() {
     (async () => {
       try {
         setPasskeyAttempted(true);
-        // Passkey timeout reduzido para não bloquear UX
         const attempt = await withTimeout(
           signIn.authenticateWithPasskey({ flow: "discoverable" }),
-          8000 
+          8000
         );
 
         if (attempt?.status === "complete") {
           localStorage.setItem("last_auth_strategy", "passkey");
-          // Proteção no setActive também
           await withTimeout(setActive({ session: attempt.createdSessionId }), 10000);
-
           fetch("/api/ensure-user-wallet", { method: "POST" }).catch(() => {});
           router.replace("/criador/onboarding");
         }
       } catch {
-        // não tem passkey / cancelou
+        // ignore
       }
     })();
   }, [alreadySignedIn, signInLoaded, signIn, canUsePasskeys, passkeyAttempted, setActive, router]);
 
-  // SIGN-IN OTP start
   const startSigninOtp = async (identifier: string) => {
     const { supportedFirstFactors } = await withTimeout(
       signIn!.create({ identifier }),
@@ -488,7 +481,6 @@ export default function CriadorLoginPage() {
     setStep("code");
   };
 
-  // SIGN-UP OTP start (requires name)
   const startSignupOtp = async (identifier: string, fn: string, ln: string) => {
     await waitForCaptchaMount();
 
@@ -514,7 +506,6 @@ export default function CriadorLoginPage() {
     setStep("code");
   };
 
-  // Decide flow
   const detectFlowOrAskName = async (identifier: string) => {
     try {
       await startSigninOtp(identifier);
@@ -534,17 +525,14 @@ export default function CriadorLoginPage() {
       if (!notFound) throw e;
     }
 
-    // first access
-    setPendingFlow("signup"); 
+    setPendingFlow("signup");
     localStorage.setItem(LS_EMAIL, identifier);
     setNeedsNameForSignup(true);
     setInfo("Primeiro acesso detectado. Preciso do seu nome e sobrenome.");
   };
 
   const resendCode = async () => {
-    // Bloqueio de duplo clique
     if (loading) return;
-
     const id = email.trim();
     if (!id) return;
 
@@ -575,8 +563,7 @@ export default function CriadorLoginPage() {
 
   const onContinue = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return; // Bloqueio de duplo clique
-
+    if (loading) return;
     setErro(null);
     setInfo(null);
 
@@ -636,9 +623,7 @@ export default function CriadorLoginPage() {
 
   const onVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    // 1. Bloqueio crucial de concorrência
-    if (loading) return; 
-
+    if (loading) return;
     setErro(null);
     setInfo(null);
 
@@ -658,13 +643,15 @@ export default function CriadorLoginPage() {
 
       if (flow === "signin") {
         if (!signIn || signIn.status !== "needs_first_factor") {
-          setErro("Seu código expirou ou a página foi atualizada. Reenvie o código.");
+          // Caso específico onde a sessão já existe mas o status local está desatualizado
+          // Tentamos um refresh forçado ou apenas avisamos para reenviar
+          setErro("Estado da sessão expirou. Reenvie o código.");
           return;
         }
 
         const attempt = await withTimeout(
           signIn.attemptFirstFactor({ strategy: "email_code", code: clean }),
-          15000 // Aumentado levemente para redes móveis lentas
+          15000
         );
 
         if (attempt.status === "complete") {
@@ -672,16 +659,11 @@ export default function CriadorLoginPage() {
           localStorage.removeItem(LS_FLOW);
           localStorage.removeItem(LS_EMAIL);
 
-          // 2. Timeout no setActive para evitar travamento eterno
           await withTimeout(setActive({ session: attempt.createdSessionId }), 10000);
 
           fetch("/api/ensure-user-wallet", { method: "POST" }).catch(() => {});
-          
-          // 3. Feedback visual: Redirecionando em vez de manter loading
-          // Isso garante que se o router demorar, o usuário sabe o que está acontecendo
           setInfo("Sucesso! Redirecionando...");
-          setLoading(false); 
-          
+          setLoading(false);
           router.replace("/criador/onboarding");
           return;
         }
@@ -692,10 +674,8 @@ export default function CriadorLoginPage() {
 
       if (flow === "signup") {
         if (!signUp) {
-          setErro("Sessão de cadastro perdida. Digite o e-mail novamente.");
+          setErro("Sessão perdida. Digite o e-mail novamente.");
           setStep("email");
-          setPendingFlow(null);
-          setNeedsNameForSignup(false);
           return;
         }
 
@@ -710,43 +690,46 @@ export default function CriadorLoginPage() {
           localStorage.removeItem(LS_EMAIL);
 
           const activate = setActiveSignUp ?? setActive;
-          // Timeout no setActive do signup também
           await withTimeout(activate({ session: suAttempt.createdSessionId }), 10000);
 
           fetch("/api/ensure-user-wallet", { method: "POST" }).catch(() => {});
-          
           setInfo("Cadastro pronto! Entrando...");
           setLoading(false);
-
           router.replace("/criador/onboarding");
           return;
         }
 
         if (suAttempt.status === "missing_requirements") {
-          setErro(
-            `Cadastro incompleto. Faltou: ${(suAttempt.missingFields || []).join(", ")}`
-          );
+          setErro(`Faltou: ${(suAttempt.missingFields || []).join(", ")}`);
           return;
         }
 
-        setErro("Não consegui concluir seu cadastro. Reenvie o código.");
+        setErro("Não consegui concluir. Reenvie o código.");
         return;
       }
 
-      // Fallback para estado perdido
-      setErro("Sessão perdida. Por favor, reinicie o login.");
+      setErro("Sessão perdida. Reinicie o login.");
       setStep("email");
-      setPendingFlow(null);
-      setNeedsNameForSignup(false);
-      setCode("");
-      localStorage.removeItem(LS_FLOW);
-      localStorage.removeItem(LS_EMAIL);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Auth Error:", e);
-      setErro("Código inválido ou erro de conexão. Tente reenviar.");
+
+      // --- CORREÇÃO PRINCIPAL AQUI ---
+      const clerkCode = (e?.errors?.[0]?.code || "").toLowerCase();
+      
+      // Se der erro "session_exists", é porque na verdade DEU CERTO!
+      // O usuário já está logado, só precisamos redirecionar.
+      if (clerkCode === "session_exists") {
+        localStorage.removeItem(LS_FLOW);
+        localStorage.removeItem(LS_EMAIL);
+        setInfo("Sessão recuperada! Redirecionando...");
+        setLoading(false);
+        router.replace("/criador/onboarding");
+        return;
+      }
+      // -------------------------------
+
+      setErro("Código inválido ou expirado. Tente reenviar.");
     } finally {
-      // O setLoading(false) aqui garante que botões destravem em caso de erro
-      // Em caso de sucesso, já chamamos false manualmente antes do router.replace
       setLoading(false);
     }
   };
@@ -763,14 +746,12 @@ export default function CriadorLoginPage() {
               Se não, mandamos código por e-mail.
             </p>
 
-            {/* Já logado */}
             {userLoaded && alreadySignedIn && (
               <div className="mb-4 p-3 rounded-xl border border-[#333] bg-[#0f0f0f]">
                 <p className="text-sm text-neutral-200">
                   Você já está logado como{" "}
                   <b>{user?.primaryEmailAddress?.emailAddress}</b>.
                 </p>
-
                 <button
                   type="button"
                   className="btn-primary auth-submit"
@@ -779,7 +760,6 @@ export default function CriadorLoginPage() {
                 >
                   Continuar
                 </button>
-
                 <button
                   type="button"
                   className="auth-toggle-btn"
@@ -831,7 +811,6 @@ export default function CriadorLoginPage() {
                         required
                       />
                     </div>
-
                     <div className="creator-field-group">
                       <label className="field-label">Sobrenome</label>
                       <input
@@ -846,7 +825,6 @@ export default function CriadorLoginPage() {
                   </>
                 )}
 
-                {/* Captcha placeholder SEMPRE visível no email step */}
                 <div
                   id="clerk-captcha"
                   data-cl-theme="dark"
@@ -865,9 +843,9 @@ export default function CriadorLoginPage() {
                   </p>
                 )}
 
-                <button 
-                  type="submit" 
-                  className="btn-primary auth-submit" 
+                <button
+                  type="submit"
+                  className="btn-primary auth-submit"
                   disabled={loading}
                   style={{ opacity: loading ? 0.7 : 1 }}
                 >
@@ -905,17 +883,15 @@ export default function CriadorLoginPage() {
                     {erro}
                   </p>
                 )}
-                
-                {/* Mostramos info se for sucesso ou info genérica */}
                 {info && !erro && (
                   <p className="cta-note" style={{ color: "var(--accent-soft)", marginTop: 8 }}>
                     {info}
                   </p>
                 )}
 
-                <button 
-                  type="submit" 
-                  className="btn-primary auth-submit" 
+                <button
+                  type="submit"
+                  className="btn-primary auth-submit"
                   disabled={loading}
                   style={{ opacity: loading ? 0.7 : 1 }}
                 >
@@ -958,8 +934,7 @@ export default function CriadorLoginPage() {
             <div className="auth-footer">
               <p className="cta-note">
                 Ao continuar, você concorda com os{" "}
-                <a href="#">termos & aviso de risco</a>. Nada aqui é produto
-                financeiro regulado.
+                <a href="#">termos & aviso de risco</a>.
               </p>
             </div>
           </section>
