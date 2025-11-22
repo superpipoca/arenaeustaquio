@@ -4388,3 +4388,25 @@ create table if not exists public.celcoin_webhooks (
 create index if not exists idx_celcoin_webhooks_entity on public.celcoin_webhooks(entity);
 create index if not exists idx_celcoin_webhooks_status on public.celcoin_webhooks(status);
 create index if not exists idx_celcoin_webhooks_received_at on public.celcoin_webhooks(received_at);
+
+
+alter table public.users
+add column if not exists clerk_user_id text unique;
+
+create index if not exists users_clerk_user_id_idx
+on public.users (clerk_user_id);
+
+-- 1) permitir Clerk id
+alter table public.users
+  add column if not exists clerk_user_id text;
+
+-- 2) auth_user_id era do Supabase Auth -> agora pode ser nulo
+alter table public.users
+  alter column auth_user_id drop not null;
+
+-- 3) garante unicidade do Clerk id
+create unique index if not exists users_clerk_user_id_key
+  on public.users (clerk_user_id);
+
+-- (opcional) se tinha FK auth_user_id -> auth.users e você não usa mais:
+-- alter table public.users drop constraint if exists users_auth_user_id_fkey;

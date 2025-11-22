@@ -6,6 +6,8 @@ const isProtectedRoute = createRouteMatcher([
   "/arena(.*)",
   "/api/ensure-user-profile",
   "/criador(.*)",
+  "/api/webhook(.*)",
+  "/api/pix(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

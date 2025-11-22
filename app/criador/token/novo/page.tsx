@@ -790,7 +790,7 @@
 // app/criador/token/novo/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import Header3ustaquio from "../../../componentes/ui/layout/Header3ustaquio";
@@ -798,12 +798,9 @@ import Footer3ustaquio from "../../../componentes/ui/layout/Footer3ustaquio";
 
 type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
 
-// 💰 Taxa do criador usada na simulação (5%)
 const FEE_CREATOR_RATE = 0.05;
-// Volume padrão para simulação se o criador não preencher nada
-const DEFAULT_SIM_VOLUME = 10000; // R$ 10.000/dia (exemplo ilustrativo)
+const DEFAULT_SIM_VOLUME = 10000;
 
-// (opcional) best effort de provisionamento, sem travar UX
 const ENSURE_TIMEOUT_MS = 3500;
 async function ensureUserWalletBestEffort() {
   try {
@@ -824,16 +821,24 @@ async function ensureUserWalletBestEffort() {
   }
 }
 
+// -------------------------
+// ✅ Regras de texto (brand hard-mode)
+// -------------------------
+const LIMITS = {
+  publicName: { min: 2, max: 40 },
+  tokenName: { min: 2, max: 40 },
+  ticker: { min: 2, max: 6 },
+  headline: { min: 20, max: 140 },
+  story: { min: 40, max: 1200 },
+};
+
+type TickerStatus = "idle" | "checking" | "free" | "taken" | "error";
+
 export default function CriarTokenPage() {
   const router = useRouter();
-
-  // ✅ Clerk hooks (sempre chamados)
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { isLoaded: userLoaded } = useUser();
 
-  // -------------------------
-  // ✅ TODOS os useState aqui (nada depois de returns)
-  // -------------------------
   const [redirecting, setRedirecting] = useState(false);
   const [prepDone, setPrepDone] = useState(false);
   const [prepError, setPrepError] = useState<string | null>(null);
@@ -845,21 +850,18 @@ export default function CriarTokenPage() {
   const [headline, setHeadline] = useState("");
   const [story, setStory] = useState("");
 
-  // 🔢 Economia do token
-  const [initialSupply, setInitialSupply] = useState(""); // quantidade total emitida
-  const [poolPercent, setPoolPercent] = useState(""); // % do supply que vai pra pool
-  const [faceValue, setFaceValue] = useState(""); // valor de face inicial
+  const [initialSupply, setInitialSupply] = useState("");
+  const [poolPercent, setPoolPercent] = useState("");
+  const [faceValue, setFaceValue] = useState("");
 
-  // 📊 Simulação de volume de trade
   const [simVolumeDay, setSimVolumeDay] = useState("");
 
-  // ✅ Riscos obrigatórios
   const [riskNotInvestment, setRiskNotInvestment] = useState(false);
   const [riskCanZero, setRiskCanZero] = useState(false);
   const [riskCreatorRole, setRiskCreatorRole] = useState(false);
 
   // -------------------------
-  // Gate de auth
+  // ✅ Gate Clerk
   // -------------------------
   useEffect(() => {
     if (!authLoaded) return;
@@ -869,7 +871,6 @@ export default function CriarTokenPage() {
     }
   }, [authLoaded, isSignedIn, router]);
 
-  // provisionamento best-effort (não trava)
   useEffect(() => {
     if (!authLoaded || !isSignedIn) return;
     let cancelled = false;
@@ -885,13 +886,17 @@ export default function CriarTokenPage() {
       setPrepDone(true);
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [authLoaded, isSignedIn]);
 
   const isLoading = !authLoaded || !userLoaded;
   const signedInStable = authLoaded && isSignedIn;
 
-  // Normaliza string numérica (aceita vírgula e ponto, remove lixo)
+  // -------------------------
+  // ✅ Normalização e parsing
+  // -------------------------
   const normalizeNumber = (raw: string) =>
     raw.replace(/[^\d.,]/g, "").replace(",", ".");
 
@@ -909,7 +914,6 @@ export default function CriarTokenPage() {
     !Number.isNaN(parsedFaceValue) &&
     parsedFaceValue > 0;
 
-  // Tokens na pool e bag do criador
   const tokensInPool =
     hasEconomics && parsedInitialSupply && parsedPoolPercent
       ? (parsedInitialSupply * parsedPoolPercent) / 100
@@ -925,7 +929,6 @@ export default function CriarTokenPage() {
       ? tokensInPool * parsedFaceValue
       : null;
 
-  // 💸 Simulação de taxa do criador (5% sobre o volume diário)
   const hasCustomVolume =
     !Number.isNaN(parsedSimVolumeDay) && parsedSimVolumeDay > 0;
   const baseVolumeForSim = hasCustomVolume
@@ -935,26 +938,147 @@ export default function CriarTokenPage() {
   const simFeesDay = baseVolumeForSim * FEE_CREATOR_RATE;
   const simFeesMonth = simFeesDay * 30;
 
-  // 💰 Hipótese: toda a oferta é vendida a valor de face
   const totalSellAtFace =
     hasEconomics && !Number.isNaN(parsedInitialSupply) && parsedInitialSupply > 0
       ? parsedInitialSupply * parsedFaceValue
       : null;
 
-  const canContinue: boolean =
+  // -------------------------
+  // ✅ Validações texto (live)
+  // -------------------------
+  const textOk = {
+    publicName:
+      publicName.trim().length >= LIMITS.publicName.min &&
+      publicName.trim().length <= LIMITS.publicName.max,
+    tokenName:
+      tokenName.trim().length >= LIMITS.tokenName.min &&
+      tokenName.trim().length <= LIMITS.tokenName.max,
+    ticker:
+      ticker.trim().length >= LIMITS.ticker.min &&
+      ticker.trim().length <= LIMITS.ticker.max,
+    headline:
+      headline.trim().length >= LIMITS.headline.min &&
+      headline.trim().length <= LIMITS.headline.max,
+    story:
+      story.trim().length >= LIMITS.story.min &&
+      story.trim().length <= LIMITS.story.max,
+  };
+
+  // helper pra UI de contagem
+  const counterClass = (len: number, min: number, max: number) => {
+    if (len === 0) return "text-neutral-500";
+    if (len < min || len > max) return "text-[#ff0055]";
+    return "text-neutral-400";
+  };
+
+  // -------------------------
+  // ✅ Checagem de ticker existente (debounced)
+  // -------------------------
+  const [tickerStatus, setTickerStatus] = useState<TickerStatus>("idle");
+  const [tickerMsg, setTickerMsg] = useState<string | null>(null);
+
+  // normaliza ticker: A-Z 0-9, sem espaço, max 6
+  const onTickerChange = (raw: string) => {
+    const clean = raw
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, LIMITS.ticker.max);
+    setTicker(clean);
+  };
+
+  useEffect(() => {
+    const sym = ticker.trim();
+
+    setTickerMsg(null);
+
+    if (sym.length < LIMITS.ticker.min) {
+      setTickerStatus("idle");
+      return;
+    }
+    if (sym.length > LIMITS.ticker.max) {
+      setTickerStatus("idle");
+      setTickerMsg("Ticker muito longo.");
+      return;
+    }
+
+    setTickerStatus("checking");
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/check-ticker?symbol=${encodeURIComponent(sym)}`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (!res.ok) throw new Error("bad_status");
+        const data = (await res.json()) as { exists: boolean };
+
+        if (data.exists) {
+          setTickerStatus("taken");
+          setTickerMsg("Esse ticker já existe na Arena. Escolha outro.");
+        } else {
+          setTickerStatus("free");
+          setTickerMsg("Ticker livre.");
+        }
+      } catch (e) {
+        console.warn("[check-ticker] falhou:", e);
+        setTickerStatus("error");
+        setTickerMsg("Não consegui verificar agora. Você pode continuar.");
+      }
+    }, 600);
+
+    return () => clearTimeout(t);
+  }, [ticker]);
+
+  // -------------------------
+  // ✅ Gate final do botão
+  // -------------------------
+  const tickerOk =
+    textOk.ticker && (tickerStatus === "free" || tickerStatus === "error");
+
+  const canContinue =
     tokenType !== "" &&
-    publicName.trim().length >= 2 &&
-    tokenName.trim().length >= 2 &&
-    ticker.trim().length >= 2 &&
-    headline.trim().length >= 20 &&
-    story.trim().length >= 40 &&
+    textOk.publicName &&
+    textOk.tokenName &&
+    tickerOk &&
+    textOk.headline &&
+    textOk.story &&
     hasEconomics &&
     riskNotInvestment &&
     riskCanZero &&
     riskCreatorRole;
 
+  const continueBlockReason = useMemo(() => {
+    if (!tokenType) return "Escolha o tipo de token.";
+    if (!textOk.publicName)
+      return `Nome público: ${LIMITS.publicName.min}–${LIMITS.publicName.max} caracteres.`;
+    if (!textOk.tokenName)
+      return `Nome do token: ${LIMITS.tokenName.min}–${LIMITS.tokenName.max} caracteres.`;
+    if (!textOk.ticker)
+      return `Ticker: ${LIMITS.ticker.min}–${LIMITS.ticker.max} letras/números.`;
+    if (tickerStatus === "checking")
+      return "Verificando ticker na Arena...";
+    if (tickerStatus === "taken")
+      return "Ticker já existe. Troque.";
+    if (!textOk.headline)
+      return `Frase curta: ${LIMITS.headline.min}–${LIMITS.headline.max} caracteres.`;
+    if (!textOk.story)
+      return `História: ${LIMITS.story.min}–${LIMITS.story.max} caracteres.`;
+    if (!hasEconomics) return "Preencha supply, % pool e valor de face.";
+    if (!riskNotInvestment || !riskCanZero || !riskCreatorRole)
+      return "Marque todas as caixas de risco.";
+    return null;
+  }, [
+    tokenType,
+    textOk,
+    tickerStatus,
+    hasEconomics,
+    riskNotInvestment,
+    riskCanZero,
+    riskCreatorRole,
+  ]);
+
   const handleContinue = () => {
-    console.log("[CRIAR TOKEN] Tentando continuar com estado atual:", {
+    console.log("[CRIAR TOKEN] Tentando continuar:", {
       tokenType,
       publicName,
       tokenName,
@@ -964,16 +1088,12 @@ export default function CriarTokenPage() {
       parsedInitialSupply,
       parsedPoolPercent,
       parsedFaceValue,
-      riskNotInvestment,
-      riskCanZero,
-      riskCreatorRole,
+      tickerStatus,
       canContinue,
     });
 
     if (!canContinue) {
-      alert(
-        "Você ainda não preencheu todos os campos obrigatórios ou marcou todos os riscos."
-      );
+      alert(continueBlockReason || "Preencha os campos obrigatórios.");
       return;
     }
 
@@ -988,19 +1108,17 @@ export default function CriarTokenPage() {
     params.set("poolPercent", parsedPoolPercent.toString());
     params.set("faceValue", parsedFaceValue.toString());
 
-    const href = `/criador/token/checkout?${params.toString()}`;
-    console.log("[CRIAR TOKEN] Navegando para checkout:", href);
-    router.push(href);
+    router.push(`/criador/token/checkout?${params.toString()}`);
   };
 
   const typeLabel =
     tokenType === "PESSOA"
       ? "Token de Pessoa"
       : tokenType === "PROJETO"
-        ? "Token de Projeto"
-        : tokenType === "COMUNIDADE"
-          ? "Token de Comunidade"
-          : "Token de Narrativa";
+      ? "Token de Projeto"
+      : tokenType === "COMUNIDADE"
+      ? "Token de Comunidade"
+      : "Token de Narrativa";
 
   const tokenUrl = `https://app.3ustaquio.com/criador/token/${(ticker || "TOKEN")
     .toLowerCase()
@@ -1012,7 +1130,6 @@ export default function CriarTokenPage() {
 
       <main className="creator-screen">
         <div className="container creator-shell">
-          {/* ✅ Loading/redirect sem quebrar hooks */}
           {isLoading && (
             <div className="min-h-[60vh] flex items-center justify-center text-neutral-500">
               Verificando credenciais...
@@ -1025,10 +1142,8 @@ export default function CriarTokenPage() {
             </div>
           )}
 
-          {/* ✅ Conteúdo só quando logado */}
           {!isLoading && signedInStable && (
             <>
-              {/* banner de preparação (não bloqueia) */}
               {prepDone && prepError && (
                 <div
                   className="warning-strip"
@@ -1116,12 +1231,13 @@ export default function CriarTokenPage() {
                         <input
                           className="field-input"
                           value={publicName}
-                          onChange={(e) => setPublicName(e.target.value)}
+                          onChange={(e) =>
+                            setPublicName(e.target.value.slice(0, LIMITS.publicName.max))
+                          }
                           placeholder="Ex: Joaquim, Bar do Zé, Crew da Pista"
                         />
-                        <p className="field-help">
-                          É o nome que a galera já reconhece. Nada de personagem
-                          aleatório.
+                        <p className={`field-help ${counterClass(publicName.trim().length, LIMITS.publicName.min, LIMITS.publicName.max)}`}>
+                          {publicName.trim().length}/{LIMITS.publicName.max} · mínimo {LIMITS.publicName.min}
                         </p>
                       </div>
 
@@ -1130,9 +1246,14 @@ export default function CriarTokenPage() {
                         <input
                           className="field-input"
                           value={tokenName}
-                          onChange={(e) => setTokenName(e.target.value)}
+                          onChange={(e) =>
+                            setTokenName(e.target.value.slice(0, LIMITS.tokenName.max))
+                          }
                           placeholder="Ex: ZETOKEN, HYPEBRENEL"
                         />
+                        <p className={`field-help ${counterClass(tokenName.trim().length, LIMITS.tokenName.min, LIMITS.tokenName.max)}`}>
+                          {tokenName.trim().length}/{LIMITS.tokenName.max} · mínimo {LIMITS.tokenName.min}
+                        </p>
                       </div>
                     </div>
 
@@ -1142,12 +1263,41 @@ export default function CriarTokenPage() {
                       <input
                         className="field-input"
                         value={ticker}
-                        onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                        onChange={(e) => onTickerChange(e.target.value)}
                         placeholder="3–6 letras, ex: ZETK, BRNL, CREW"
                       />
-                      <p className="field-help">
-                        Precisa ser falável e memético. Esquece “BRASILCOIN”.
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className={`field-help ${counterClass(ticker.trim().length, LIMITS.ticker.min, LIMITS.ticker.max)}`}>
+                          {ticker.trim().length}/{LIMITS.ticker.max} · mínimo {LIMITS.ticker.min}
+                        </p>
+                        {tickerStatus === "checking" && (
+                          <span className="text-xs text-neutral-400">verificando...</span>
+                        )}
+                        {tickerStatus === "free" && (
+                          <span className="text-xs text-emerald-400">livre ✓</span>
+                        )}
+                        {tickerStatus === "taken" && (
+                          <span className="text-xs text-[#ff0055]">ocupado ✕</span>
+                        )}
+                        {tickerStatus === "error" && (
+                          <span className="text-xs text-yellow-400">sem validação</span>
+                        )}
+                      </div>
+                      {tickerMsg && (
+                        <p
+                          className="field-help"
+                          style={{
+                            color:
+                              tickerStatus === "taken"
+                                ? "var(--accent-primary)"
+                                : tickerStatus === "free"
+                                ? "#4ade80"
+                                : "#facc15",
+                          }}
+                        >
+                          {tickerMsg}
+                        </p>
+                      )}
                     </div>
 
                     {/* Headline */}
@@ -1157,12 +1307,13 @@ export default function CriarTokenPage() {
                         className="field-textarea"
                         rows={2}
                         value={headline}
-                        onChange={(e) => setHeadline(e.target.value)}
+                        onChange={(e) =>
+                          setHeadline(e.target.value.slice(0, LIMITS.headline.max))
+                        }
                         placeholder="Token da nossa comunidade para brincar de mercado com a nossa história. Alto risco, zero promessa de retorno."
                       />
-                      <p className="field-help">
-                        Frase que aparece no topo da página do token. Direta, sem
-                        vender milagre.
+                      <p className={`field-help ${counterClass(headline.trim().length, LIMITS.headline.min, LIMITS.headline.max)}`}>
+                        {headline.trim().length}/{LIMITS.headline.max} · mínimo {LIMITS.headline.min}
                       </p>
                     </div>
 
@@ -1173,9 +1324,14 @@ export default function CriarTokenPage() {
                         className="field-textarea"
                         rows={6}
                         value={story}
-                        onChange={(e) => setStory(e.target.value)}
+                        onChange={(e) =>
+                          setStory(e.target.value.slice(0, LIMITS.story.max))
+                        }
                         placeholder="Explique quem é você/comunidade, por que esse token existe, o que as pessoas estão sinalizando ao comprar e por que isso é um experimento — não um plano de aposentadoria."
                       />
+                      <p className={`field-help ${counterClass(story.trim().length, LIMITS.story.min, LIMITS.story.max)}`}>
+                        {story.trim().length}/{LIMITS.story.max} · mínimo {LIMITS.story.min}
+                      </p>
                     </div>
 
                     {/* ⚙️ Configuração econômica do lançamento */}
@@ -1201,17 +1357,11 @@ export default function CriarTokenPage() {
                           className="field-input"
                           value={initialSupply}
                           onChange={(e) =>
-                            setInitialSupply(
-                              e.target.value.replace(/[^\d.,]/g, "")
-                            )
+                            setInitialSupply(e.target.value.replace(/[^\d.,]/g, ""))
                           }
                           placeholder="Ex: 1.000.000"
                           inputMode="decimal"
                         />
-                        <p className="field-help">
-                          Total de unidades que nascem no dia 0. Não é
-                          recomendação, é sua visão de jogo.
-                        </p>
                       </div>
 
                       <div className="creator-field-group">
@@ -1227,10 +1377,6 @@ export default function CriarTokenPage() {
                           placeholder="Ex: 0,10 (em base interna)"
                           inputMode="decimal"
                         />
-                        <p className="field-help">
-                          Preço inicial de referência na moeda base interna (ex.:
-                          BRL interno). Depois disso, o mercado faz o resto.
-                        </p>
                       </div>
                     </div>
 
@@ -1247,38 +1393,106 @@ export default function CriarTokenPage() {
                         placeholder="Ex: 20"
                         inputMode="decimal"
                       />
-                      <p className="field-help">
-                        Parte da moeda que entra direto na pool de liquidez
-                        inicial (AMM). O resto é sua bag fora da pool, sob sua
-                        responsabilidade. Configuração travada no lançamento.
-                      </p>
                     </div>
 
-                    {/* ... TODO O RESTO DO TEU FORM IGUAL ... */}
+                    {/* ... resto do teu form IGUAL ... */}
+
+                    {/* Riscos (igual) */}
+                    <div className="creator-risk-box">
+                      <p>
+                        <strong>Sem romance:</strong> este token é um experimento
+                        especulativo de narrativa. Não é título de dívida, não é
+                        cota de fundo, não é produto financeiro regulado. Pode não
+                        ter utilidade prática e pode não valer nada amanhã.
+                      </p>
+
+                      <div className="creator-risk-checks">
+                        <label className="creator-risk-check">
+                          <input
+                            type="checkbox"
+                            checked={riskNotInvestment}
+                            onChange={(e) =>
+                              setRiskNotInvestment(e.target.checked)
+                            }
+                          />
+                          <span>
+                            Eu entendo e declaro que este token{" "}
+                            <strong>não é investimento seguro</strong> nem produto
+                            financeiro regulado.
+                          </span>
+                        </label>
+
+                        <label className="creator-risk-check">
+                          <input
+                            type="checkbox"
+                            checked={riskCanZero}
+                            onChange={(e) => setRiskCanZero(e.target.checked)}
+                          />
+                          <span>
+                            Eu entendo e declaro que o preço deste token pode{" "}
+                            <strong>ir a zero</strong>.
+                          </span>
+                        </label>
+
+                        <label className="creator-risk-check">
+                          <input
+                            type="checkbox"
+                            checked={riskCreatorRole}
+                            onChange={(e) =>
+                              setRiskCreatorRole(e.target.checked)
+                            }
+                          />
+                          <span>
+                            Eu entendo que sou{" "}
+                            <strong>criador de narrativa</strong>, não gerente de
+                            investimento.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="warning-strip" style={{ marginTop: 16 }}>
+                      <strong>Linha dura do jogo:</strong> supply inicial, % na
+                      pool e valor de face são parâmetros imutáveis deste token
+                      depois do lançamento.
+                    </div>
+
+                    {/* ✅ Motivo do bloqueio */}
+                    {!canContinue && continueBlockReason && (
+                      <p
+                        className="cta-note"
+                        style={{ color: "var(--accent-primary)", marginTop: 10 }}
+                      >
+                        {continueBlockReason}
+                      </p>
+                    )}
 
                     <div className="creator-footer" style={{ marginTop: "16px" }}>
                       <div className="creator-footer-left">
                         <p className="creator-footer-hint">
                           Nada será lançado sem você revisar e pagar a taxa. Esta
-                          etapa é só para desenhar o token e o modelo de
-                          lançamento.
+                          etapa é só para desenhar o token.
                         </p>
                       </div>
                       <div className="creator-footer-right">
                         <button
                           type="button"
                           className={`btn-primary creator-nav-btn ${
-                            !canContinue ? "opacity-60 cursor-not-allowed" : ""
+                            !canContinue || tickerStatus === "checking"
+                              ? "opacity-60 cursor-not-allowed"
+                              : ""
                           }`}
-                          disabled={!canContinue}
+                          disabled={!canContinue || tickerStatus === "checking"}
                           onClick={handleContinue}
                           title={
                             canContinue
                               ? "Avançar para o checkout"
-                              : "Preencha todos os campos e marque as caixas de risco"
+                              : continueBlockReason || "Preencha os campos e riscos"
                           }
                         >
-                          Continuar para pagamento & lançamento
+                          {tickerStatus === "checking"
+                            ? "Verificando ticker..."
+                            : "Continuar para pagamento & lançamento"}
                         </button>
                       </div>
                     </div>
@@ -1295,7 +1509,7 @@ export default function CriarTokenPage() {
                       </span>
                     </div>
 
-                    {/* ... TEU PREVIEW IGUAL ... */}
+                    {/* teu preview IGUAL */}
                     <div className="creator-preview-main">
                       <div className="creator-preview-title-row">
                         <h3 className="creator-preview-title">
@@ -1391,7 +1605,7 @@ export default function CriarTokenPage() {
                                 maximumFractionDigits: 2,
                               })}{" "}
                               <span className="metric-note">
-                                (exemplo matemático, não projeção de retorno)
+                                (exemplo matemático, não projeção)
                               </span>
                             </span>
                           </div>
