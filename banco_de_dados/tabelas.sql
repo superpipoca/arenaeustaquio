@@ -4348,3 +4348,43 @@ create trigger trg_users_create_wallet
 after insert on users
 for each row
 execute function trg_create_wallet_for_user();
+
+create table if not exists public.pix_webhooks (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null default 'CELCOIN',
+  event_type text null,
+  provider_event_id text not null,
+  status text null,
+  payload jsonb not null,
+  received_at timestamptz not null default now()
+);
+
+-- idempotência: não duplica o mesmo evento
+create unique index if not exists pix_webhooks_provider_event_id_key
+  on public.pix_webhooks (provider, provider_event_id);
+
+
+create table if not exists public.celcoin_webhooks (
+  id uuid primary key default gen_random_uuid(),
+  received_at timestamptz not null default now(),
+
+  entity text not null,
+  status text not null,
+  create_timestamp timestamptz null,
+
+  -- conteúdo específico do evento
+  body jsonb not null,
+  -- payload inteiro pra auditoria
+  raw jsonb not null,
+
+  -- chave de idempotência p/ não duplicar evento
+  idempotency_key text unique,
+
+  processed boolean not null default false,
+  processed_at timestamptz null,
+  error_message text null
+);
+
+create index if not exists idx_celcoin_webhooks_entity on public.celcoin_webhooks(entity);
+create index if not exists idx_celcoin_webhooks_status on public.celcoin_webhooks(status);
+create index if not exists idx_celcoin_webhooks_received_at on public.celcoin_webhooks(received_at);

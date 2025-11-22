@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Header3ustaquio from "../../componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "../../componentes/ui/layout/Footer3ustaquio";
 import { getOrCreateCreatorProfile } from "../../lib/creatorProfile";
+import PasskeyUpsellModal from "../../componentes/auth/PasskeyUpsellModal";
 
 export default function CriadorOnboardingPage() {
   const router = useRouter();
@@ -47,6 +48,7 @@ export default function CriadorOnboardingPage() {
 
   return (
     <>
+      <PasskeyUpsellModal />
       <Header3ustaquio />
       <main className="creator-screen">
         <div className="container creator-shell">

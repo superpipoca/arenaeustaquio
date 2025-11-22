@@ -2922,3 +2922,39 @@ section {
   color: var(--text-muted);
 }
 
+/* garante que o captcha nunca seja colapsado no desktop */
+#clerk-captcha {
+  width: 100%;
+  min-height: 90px;            /* espaço real para o widget */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+  margin-top: 8px;
+}
+
+/* iframe/turnstile responsivo */
+#clerk-captcha iframe,
+#clerk-captcha > div {
+  max-width: 100% !important;
+}
+
+/* se algum container teu corta, libera */
+.auth-card,
+.auth-form,
+.creator-shell {
+  overflow: visible;
+}
+/* captcha nunca pode colapsar */
+#clerk-captcha {
+  min-height: 80px;
+  width: 100%;
+}
+
+/* evite cortar o iframe do Turnstile */
+.auth-card,
+.auth-form,
+.creator-shell {
+  overflow: visible !important;
+  transform: none !important;
+}
