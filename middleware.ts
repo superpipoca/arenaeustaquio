@@ -1,18 +1,17 @@
-// proxy.ts  (na raiz do projeto)
+// proxy.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isProtectedRoute = createRouteMatcher([
   "/criador(.*)",
   "/arena(.*)",
+  "/api/launch-token-after-pix",
   "/api/ensure-user-profile",
-  "/criador(.*)",
   "/api/webhook(.*)",
   "/api/pix(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
-    // ✅ jeito correto nas versões novas
     await auth.protect();
   }
 });

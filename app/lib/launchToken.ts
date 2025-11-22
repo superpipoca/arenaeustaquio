@@ -66,6 +66,8 @@
 
 //   return body as LaunchTokenResponse;
 // }
+// app/lib/launchToken.ts
+// app/lib/launchToken.ts
 "use client";
 
 export type LaunchTokenInput = {
@@ -79,22 +81,31 @@ export type LaunchTokenInput = {
   poolPercent: number;
   faceValue: number;
   pixData: any;
+  clerkToken?: string; // vindo do getToken()
 };
 
-export async function launchTokenAfterPix(input: LaunchTokenInput) {
+type LaunchTokenResult = { coinId: string; slug: string };
+
+export async function launchTokenAfterPix(
+  input: LaunchTokenInput
+): Promise<LaunchTokenResult> {
   console.log("[LAUNCH] Chamando /api/launch-token-after-pix", input);
 
   const res = await fetch("/api/launch-token-after-pix", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(input.clerkToken
+        ? { Authorization: `Bearer ${input.clerkToken}` }
+        : {}),
+    },
+    credentials: "include", // garante cookie de sessão também
     body: JSON.stringify(input),
   });
 
+  const rawText = await res.text();
   let body: any = null;
-  let rawText: string | null = null;
-
   try {
-    rawText = await res.text();
     body = rawText ? JSON.parse(rawText) : null;
   } catch {
     body = null;
@@ -108,8 +119,17 @@ export async function launchTokenAfterPix(input: LaunchTokenInput) {
     });
 
     const code = body?.error || `LAUNCH_FAIL_${res.status}`;
-    throw new Error(code);
+    const msg =
+      body?.message ||
+      body?.long_message ||
+      "Falha ao lançar token. Tente novamente.";
+
+    const err = new Error(code);
+    (err as any).status = res.status;
+    (err as any).body = body;
+    (err as any).message = msg;
+    throw err;
   }
 
-  return body as { coinId: string; slug: string };
+  return body as LaunchTokenResult;
 }
