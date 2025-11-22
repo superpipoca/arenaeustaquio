@@ -1,0 +1,20 @@
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+
+const isProtectedRoute = createRouteMatcher([
+  "/criador(.*)",
+  "/arena(.*)",
+  "/api/ensure-user-profile",
+]);
+
+export default clerkMiddleware((auth, req) => {
+  if (isProtectedRoute(req)) auth().protect();
+});
+
+export const config = {
+  matcher: [
+    // tudo que não é asset
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|png|jpg|jpeg|gif|svg|ico|webp|ttf|woff2?|map)).*)",
+    // sempre para API
+    "/(api|trpc)(.*)",
+  ],
+};

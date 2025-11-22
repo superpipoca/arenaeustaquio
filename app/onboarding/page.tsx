@@ -9,7 +9,7 @@ import { useAuth, useUser } from "@clerk/nextjs";
 //import { getOrCreateUserProfile } from "../lib/userProfile"; // ✅ crie igual ao creatorProfile
 import { getOrCreateUserProfile } from "../lib/userProfile.client";
 
-const NEXT_STEP = "/arena"; // ✅ TROCA pra onde o usuário deve ir após o onboarding
+const NEXT_STEP = "/criador/token/novo"; // ✅ TROCA pra onde o usuário deve ir após o onboarding
 
 export default function UsuarioOnboardingPage() {
   const router = useRouter();
