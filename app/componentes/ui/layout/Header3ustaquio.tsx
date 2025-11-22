@@ -257,13 +257,18 @@
 // }
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useUser, useClerk } from "@clerk/nextjs"; // ✅ Mudamos para o Clerk
+import { useUser, useClerk, useAuth } from "@clerk/nextjs";
 
 export default function Header3ustaquio() {
   const router = useRouter();
-  const { isLoaded, isSignedIn, user } = useUser(); // ✅ Hook oficial do Clerk
+
+  // ✅ Fonte única de verdade para sessão:
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  // ✅ useUser só para dados do usuário:
+  const { isLoaded: userLoaded, user } = useUser();
+
   const { signOut } = useClerk();
 
   const [isMobile, setIsMobile] = useState(false);
@@ -277,8 +282,6 @@ export default function Header3ustaquio() {
     const handleResize = () => {
       const mobileNow = window.innerWidth < 768;
       setIsMobile(mobileNow);
-
-      // se virou desktop, fecha dropdown mobile
       if (!mobileNow) setMenuOpen(false);
     };
 
@@ -308,8 +311,8 @@ export default function Header3ustaquio() {
 
   const handleSignOut = async () => {
     try {
-      // ✅ Logout pelo Clerk
-      await signOut(() => router.push("/"));
+      await signOut();              // ✅ sem callback (menos race)
+      router.replace("/");          // ✅ navega depois
     } catch (err) {
       console.error("[HEADER] Erro ao sair:", err);
     } finally {
@@ -317,12 +320,16 @@ export default function Header3ustaquio() {
     }
   };
 
-  // ✅ Lógica de Display Name via Clerk
+  // ✅ Display name resiliente
   const userEmail = user?.primaryEmailAddress?.emailAddress;
-  const displayName = userEmail ? userEmail.split("@")[0] : "Criador";
+  const displayName = useMemo(() => {
+    if (!userEmail) return "Criador";
+    return userEmail.split("@")[0];
+  }, [userEmail]);
 
-  // Evita flash de conteúdo deslogado enquanto carrega
-  const isLoading = !isLoaded;
+  // ✅ evita flicker:
+  const isLoading = !authLoaded || !userLoaded;
+  const signedInStable = authLoaded && isSignedIn;
 
   return (
     <header className="site-header">
@@ -340,7 +347,7 @@ export default function Header3ustaquio() {
         </div>
 
         {/* Navegação desktop quando não logado */}
-        {!isSignedIn && !isMobile && (
+        {!signedInStable && !isMobile && (
           <nav className="header-nav" aria-label="Navegação principal">
             <ul className="header-nav-list">
               <li className="header-nav-item">
@@ -365,11 +372,10 @@ export default function Header3ustaquio() {
         {/* Direita */}
         <div className="header-right">
           {isLoading ? (
-             // Placeholder discreto enquanto carrega auth
-             <div className="w-20 h-8 bg-white/5 rounded animate-pulse" />
-          ) : isSignedIn ? (
+            <div className="w-20 h-8 bg-white/5 rounded animate-pulse" />
+          ) : signedInStable ? (
             isMobile ? (
-              // ===== LOGADO MOBILE: COMPACTO =====
+              // ===== LOGADO MOBILE =====
               <div className="header-mobile" ref={menuRef}>
                 <button
                   type="button"
@@ -386,11 +392,10 @@ export default function Header3ustaquio() {
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen((v) => !v)}
                 >
-                  {/* Ícone User do user ou Hamburger */}
                   {user?.imageUrl ? (
-                    <img 
-                      src={user.imageUrl} 
-                      alt="Perfil" 
+                    <img
+                      src={user.imageUrl}
+                      alt="Perfil"
                       className="w-8 h-8 rounded-full border border-neutral-700 object-cover"
                     />
                   ) : (
