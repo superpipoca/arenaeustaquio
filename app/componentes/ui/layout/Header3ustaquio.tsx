@@ -264,15 +264,15 @@ import { useUser, useClerk, useAuth } from "@clerk/nextjs";
 export default function Header3ustaquio() {
   const router = useRouter();
 
-  // ✅ Fonte única de verdade para sessão:
+  // ✅ Fonte única da sessão
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
-  // ✅ useUser só para dados do usuário:
+  // ✅ useUser só pra dados
   const { isLoaded: userLoaded, user } = useUser();
-
   const { signOut } = useClerk();
 
   const [isMobile, setIsMobile] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Detecta layout responsivo (mobile)
@@ -309,25 +309,30 @@ export default function Header3ustaquio() {
   const handleGoToArena = () => router.push("/arena");
   const handleGoToDashboard = () => router.push("/criador/dashboard");
 
+  // ✅ Sair: mata sessão e redireciona pra "/"
   const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+
     try {
-      await signOut();              // ✅ sem callback (menos race)
-      router.replace("/");          // ✅ navega depois
+      await signOut(); // encerra sessão Clerk
     } catch (err) {
       console.error("[HEADER] Erro ao sair:", err);
+      // mesmo se der erro, a UX pede sair daqui
     } finally {
       setMenuOpen(false);
+      router.replace("/"); // redireciona SEMPRE pro home
+      // opcional: reforça limpeza de RSC na navegação
+      router.refresh();
     }
   };
 
-  // ✅ Display name resiliente
   const userEmail = user?.primaryEmailAddress?.emailAddress;
   const displayName = useMemo(() => {
     if (!userEmail) return "Criador";
     return userEmail.split("@")[0];
   }, [userEmail]);
 
-  // ✅ evita flicker:
   const isLoading = !authLoaded || !userLoaded;
   const signedInStable = authLoaded && isSignedIn;
 
@@ -426,9 +431,10 @@ export default function Header3ustaquio() {
                       type="button"
                       role="menuitem"
                       className="header-mobile-item danger"
+                      disabled={signingOut}
                       onClick={handleSignOut}
                     >
-                      Sair
+                      {signingOut ? "Saindo..." : "Sair"}
                     </button>
                   </div>
                 )}
@@ -468,9 +474,10 @@ export default function Header3ustaquio() {
                 <button
                   type="button"
                   className="header-cta-secondary"
+                  disabled={signingOut}
                   onClick={handleSignOut}
                 >
-                  Sair
+                  {signingOut ? "Saindo..." : "Sair"}
                 </button>
               </>
             )

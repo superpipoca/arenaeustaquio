@@ -1,18 +1,30 @@
-// app/criador/onboarding/page.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Header3ustaquio from "../../componentes/ui/layout/Header3ustaquio";
-import Footer3ustaquio from "../../componentes/ui/layout/Footer3ustaquio";
-import { getOrCreateCreatorProfile } from "../../lib/creatorProfile";
-import PasskeyUpsellModal from "../../componentes/auth/PasskeyUpsellModal";
+import Header3ustaquio from "../componentes/ui/layout/Header3ustaquio";
+import Footer3ustaquio from "../componentes/ui/layout/Footer3ustaquio";
+import PasskeyUpsellModal from "../componentes/auth/PasskeyUpsellModal";
+import { useAuth, useUser } from "@clerk/nextjs";
+//import { getOrCreateUserProfile } from "../lib/userProfile"; // ✅ crie igual ao creatorProfile
+import { getOrCreateUserProfile } from "../lib/userProfile.client";
 
-export default function CriadorOnboardingPage() {
+const NEXT_STEP = "/arena"; // ✅ TROCA pra onde o usuário deve ir após o onboarding
+
+export default function UsuarioOnboardingPage() {
   const router = useRouter();
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { isLoaded: userLoaded, user } = useUser();
+
   const [aceito, setAceito] = useState(false);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  // se não estiver logado, manda pro login
+  useEffect(() => {
+    if (!authLoaded) return;
+    if (!isSignedIn) router.replace("/login"); // ou "/criador/login" se quiser unificar
+  }, [authLoaded, isSignedIn, router]);
 
   const handleContinuar = async () => {
     setErro(null);
@@ -25,17 +37,17 @@ export default function CriadorOnboardingPage() {
     }
 
     setLoading(true);
-
     try {
-      await getOrCreateCreatorProfile();
-      // se deu tudo certo, segue para criação do token
-      router.push("/criador/token/novo");
+      await getOrCreateUserProfile();
+
+      // ✅ próximo passo do usuário
+      router.push(NEXT_STEP);
     } catch (err: any) {
-      console.error("Erro no onboarding do criador:", err);
+      console.error("Erro no onboarding do usuário:", err);
 
       if (err?.message === "NOT_AUTH") {
         setErro("Você precisa estar logado para continuar.");
-        router.push("/criador/login");
+        router.replace("/login");
       } else {
         setErro(
           "Não foi possível preparar sua Arena agora. Faça login novamente ou tente mais tarde."
@@ -46,23 +58,51 @@ export default function CriadorOnboardingPage() {
     }
   };
 
+  // enquanto clerk carrega evita piscar
+  if (!authLoaded || !userLoaded) {
+    return (
+      <>
+        <Header3ustaquio />
+        <main className="creator-screen">
+          <div className="container creator-shell">
+            <section className="creator-card">
+              <p className="cta-note">Carregando sua Arena...</p>
+            </section>
+          </div>
+          <Footer3ustaquio />
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <PasskeyUpsellModal />
+
       <Header3ustaquio />
       <main className="creator-screen">
         <div className="container creator-shell">
           {/* Cabeçalho rápido do onboarding */}
           <header className="creator-header">
-            <span className="creator-kicker">Jornada do Criador</span>
+            <span className="creator-kicker">Jornada do Usuário</span>
+
             <h1 className="creator-title">
-              Antes de lançar moeda, alinhamos o risco.
+              Bem-vindo à Arena. Aqui o risco é transparente.
             </h1>
+
             <p className="creator-subtitle">
-              3ustaquio é uma arena de especulação de alto risco. Você entra como
-              <strong> criador de narrativa</strong>, não como vendedor de investimento
-              garantido.
+              Você entra como <strong>especulador consciente</strong>.  
+              O 3ustaquio não promete retorno, não protege contra perda,  
+              e não é banco/corretora. É mercado de narrativa.
             </p>
+
+            {/* Identidade rápida do usuário */}
+            {!!user?.primaryEmailAddress?.emailAddress && (
+              <p className="cta-note" style={{ marginTop: 6 }}>
+                Logado como:{" "}
+                <b>{user.primaryEmailAddress.emailAddress}</b>
+              </p>
+            )}
           </header>
 
           {/* Bloco de aceitação de risco */}
@@ -70,18 +110,16 @@ export default function CriadorOnboardingPage() {
             <div className="creator-card">
               <h2 className="section-title">Qual é o combinado?</h2>
               <p className="section-subtitle">
-                Ao seguir para criar seu token, você assume que está construindo um
-                experimento especulativo com a sua comunidade – não um produto financeiro
-                seguro.
+                Antes de entrar no book, você precisa aceitar o jogo:
+                aqui é especulação, não “investimento seguro”.
               </p>
 
               <ul className="hero-bullets">
-                <li>Seu token pode subir, cair rápido ou simplesmente não andar.</li>
+                <li>Você pode perder 100% do valor colocado.</li>
+                <li>Preço pode explodir, colapsar ou ficar morto.</li>
+                <li>Você opera por conta própria, sem garantia de liquidez.</li>
                 <li>
-                  3ustaquio é ferramenta de código e transparência, não banco nem corretora.
-                </li>
-                <li>
-                  Você é responsável pela forma como comunica isso para a sua audiência.
+                  O risco é parte do produto. Transparência brutal, zero promessa.
                 </li>
               </ul>
 
@@ -111,10 +149,11 @@ export default function CriadorOnboardingPage() {
               <div className="creator-footer" style={{ marginTop: "18px" }}>
                 <div className="creator-footer-left">
                   <p className="creator-footer-hint">
-                    Você ainda não está lançando nenhuma moeda. O próximo passo é desenhar o
-                    token; o lançamento só acontece depois do checkout e da sua confirmação.
+                    Você ainda não comprou nada.  
+                    O próximo passo é explorar moedas, ver risco e escolher onde entrar.
                   </p>
                 </div>
+
                 <div className="creator-footer-right">
                   <button
                     type="button"
@@ -122,15 +161,14 @@ export default function CriadorOnboardingPage() {
                     disabled={!aceito || loading}
                     onClick={handleContinuar}
                   >
-                    {loading
-                      ? "Preparando sua Arena..."
-                      : "Começar a criar minha moeda"}
+                    {loading ? "Preparando sua Arena..." : "Entrar na Arena"}
                   </button>
                 </div>
               </div>
             </div>
           </section>
         </div>
+
         <Footer3ustaquio />
       </main>
     </>

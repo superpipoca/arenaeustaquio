@@ -102,56 +102,28 @@
 //     return NextResponse.json({ ok: false, error: "unexpected" }, { status: 200 });
 //   }
 // }
-// app/api/ensure-user-wallet/route.ts
 import { NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { createClient, type PostgrestError } from "@supabase/supabase-js";
+import { getAuth, clerkClient } from "@clerk/nextjs/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RpcResult = {
-  user_id?: string;
-  wallet_id?: string;
-  // ajuste se sua RPC retorna mais campos
-};
-
-const SUPABASE_URL =
-  process.env.SUPABASE_URL ??
-  process.env.NEXT_PUBLIC_SUPABASE_URL ??
-  "";
-
-const SERVICE_ROLE =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-
-// Timeout hard — não cancela o RPC, só evita travar request
-function withTimeout<T>(p: Promise<T>, ms = 6000): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, rej) =>
-      setTimeout(() => rej(new Error("timeout")), ms)
-    ),
-  ]);
-}
-
-function json(body: any, status = 200) {
-  return NextResponse.json(body, {
-    status,
-    headers: { "Cache-Control": "no-store" },
-  });
-}
-
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    // 1) Auth Clerk
-    const { userId } = auth();
+    // 🔑 1) Pegar userId da requisição (cookies + Authorization header)
+    const { userId } = getAuth(req);
+
     if (!userId) {
-      return json({ ok: false, error: "unauthorized" }, 401);
+      // Aqui só cai se REALMENTE não tiver sessão válida
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
+        { status: 401 }
+      );
     }
 
-    // 2) Clerk backend client (v5+)
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
+    // 👤 2) Buscar usuário na Clerk
+    const user = await clerkClient.users.getUser(userId);
 
     const primaryEmail =
       user.emailAddresses?.find((e) => e.id === user.primaryEmailAddressId)
@@ -160,9 +132,13 @@ export async function POST() {
       null;
 
     if (!primaryEmail) {
-      return json({ ok: false, error: "no_email" }, 400);
+      return NextResponse.json(
+        { ok: false, error: "no_email" },
+        { status: 400 }
+      );
     }
 
+    // 🧾 3) Montar username / display
     const baseUsername =
       primaryEmail
         .split("@")[0]
@@ -173,81 +149,50 @@ export async function POST() {
       [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
       baseUsername;
 
-    // 3) Env check (aqui é erro real de server)
+    // 🗄️ 4) Supabase Admin
+    const SUPABASE_URL =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+    const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
     if (!SUPABASE_URL || !SERVICE_ROLE) {
-      console.error("[ensure-user-wallet] missing env", {
-        hasUrl: !!SUPABASE_URL,
-        hasServiceRole: !!SERVICE_ROLE,
-      });
-      return json({ ok: false, error: "server_config_error" }, 500);
+      console.error("[ensure-user-wallet] missing env vars");
+      return NextResponse.json(
+        { ok: false, error: "server_config_error" },
+        { status: 200 } // não quebra o login, só avisa
+      );
     }
 
-    // 4) Supabase admin
     const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE, {
       auth: { persistSession: false },
-      global: { fetch },
     });
 
-    const payload = {
-      p_username: baseUsername,
-      p_display_name: fullName,
-      p_avatar_url: user.imageUrl ?? null,
-      p_bio: null,
-      p_role: "CREATOR",
-    };
-
-    /**
-     * 5) IMPORTANTÍSSIMO:
-     * rpc() retorna um PostgrestBuilder (thenable).
-     * Forço virar Promise "de verdade" com .then(r => r)
-     * pra evitar bug de typing + timeout.
-     */
-    const rpcPromise = supabaseAdmin
-      .rpc("rpc_create_user_and_wallet", payload)
-      .then((r) => r) as Promise<{
-        data: RpcResult | null;
-        error: PostgrestError | null;
-      }>;
-
-    const { data, error } = await withTimeout(rpcPromise, 6000);
-
-    // 6) Erros de RPC
-    if (error) {
-      const msg = (error.message || "").toLowerCase();
-
-      // idempotência / já existe => não quebra login
-      const duplicate =
-        error.code === "23505" ||
-        msg.includes("duplicate") ||
-        msg.includes("already exists");
-
-      if (duplicate) {
-        return json({ ok: true, alreadyExists: true });
+    // 5) Chama RPC que cria user + wallet
+    const { data, error } = await supabaseAdmin.rpc(
+      "rpc_create_user_and_wallet",
+      {
+        p_username: baseUsername,
+        p_display_name: fullName,
+        p_avatar_url: user.imageUrl ?? null,
+        p_bio: null,
+        p_role: "CREATOR",
       }
+    );
 
-      console.error("[ensure-user-wallet] rpc error:", error);
-      return json({
-        ok: false,
-        error: "rpc_failed",
-        detail: error.message,
-        code: error.code,
-      });
+    if (error) {
+      console.error("[ensure-user-wallet] rpc failed:", error);
+      return NextResponse.json(
+        { ok: false, error: error.message ?? "rpc_failed" },
+        { status: 200 }
+      );
     }
 
-    return json({ ok: true, data });
-
-  } catch (err: any) {
-    if (err?.message === "timeout") {
-      console.warn("[ensure-user-wallet] timeout");
-      // não travar jornada por causa de wallet
-      return json({ ok: true, pending: true }, 202);
-    }
-
+    // ✅ Sucesso
+    return NextResponse.json({ ok: true, data }, { status: 200 });
+  } catch (err) {
     console.error("[ensure-user-wallet] unexpected:", err);
-    return json({
-      ok: false,
-      error: "unexpected",
-      detail: err?.message ?? String(err),
-    });
+    return NextResponse.json(
+      { ok: false, error: "unexpected" },
+      { status: 200 }
+    );
   }
 }

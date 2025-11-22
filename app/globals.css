@@ -2958,3 +2958,79 @@ section {
   overflow: visible !important;
   transform: none !important;
 }
+
+/* Auth shell */
+.creator-screen { min-height: calc(100vh - 160px); padding: 32px 0; }
+.creator-shell.auth-shell { display: flex; justify-content: center; }
+.auth-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.02), 0 20px 60px rgba(0,0,0,0.6);
+}
+
+.creator-title { font-size: 24px; margin: 0 0 6px; letter-spacing: 0.5px; }
+.creator-subtitle { color: var(--text-muted); margin: 0 0 16px; }
+
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+
+.creator-field-group { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 13px; color: var(--text-muted); }
+.field-input {
+  width: 100%;
+  background: #0b0b0b;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 12px;
+  color: var(--text-main);
+  outline: none;
+}
+.field-input:focus {
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px rgba(0,255,255,0.12);
+}
+.field-help { font-size: 14px; color: var(--text-muted); margin: 0 0 6px; }
+
+.btn-primary.auth-submit {
+  margin-top: 4px;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-weight: 700;
+  background: var(--accent-primary);
+  color: #fff;
+  cursor: pointer;
+}
+.btn-primary.auth-submit:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.auth-toggle-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed #333;
+  color: var(--text-main);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.auth-toggle-btn:hover { border-color: var(--accent-hype); }
+
+.cta-note { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.cta-note--error { color: var(--accent-primary); }
+
+.auth-footer { margin-top: 14px; text-align: center; }
+.auth-footer a { color: var(--accent-link); text-decoration: none; }
+.auth-footer a:hover { text-decoration: underline; }
+
+.auth-box{
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #333;
+  background: #0f0f0f;
+  display: grid;
+  gap: 8px;
+}
