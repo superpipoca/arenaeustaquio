@@ -786,9 +786,11 @@
 //     </>
 //   );
 // }
+
+// app/criador/token/novo/page.tsx
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import Header3ustaquio from "../../../componentes/ui/layout/Header3ustaquio";
@@ -798,9 +800,10 @@ type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
 
 // 💰 Taxa do criador usada na simulação (5%)
 const FEE_CREATOR_RATE = 0.05;
-const DEFAULT_SIM_VOLUME = 10000; // R$ 10.000/dia
+// Volume padrão para simulação se o criador não preencher nada
+const DEFAULT_SIM_VOLUME = 10000; // R$ 10.000/dia (exemplo ilustrativo)
 
-// NÃO bloqueia a tela por causa do Supabase
+// (opcional) best effort de provisionamento, sem travar UX
 const ENSURE_TIMEOUT_MS = 3500;
 async function ensureUserWalletBestEffort() {
   try {
@@ -810,6 +813,7 @@ async function ensureUserWalletBestEffort() {
     await fetch("/api/ensure-user-wallet", {
       method: "POST",
       signal: ctrl.signal,
+      credentials: "include",
     });
 
     clearTimeout(t);
@@ -822,35 +826,57 @@ async function ensureUserWalletBestEffort() {
 
 export default function CriarTokenPage() {
   const router = useRouter();
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
-  const { isLoaded: userLoaded, user } = useUser();
 
+  // ✅ Clerk hooks (sempre chamados)
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { isLoaded: userLoaded } = useUser();
+
+  // -------------------------
+  // ✅ TODOS os useState aqui (nada depois de returns)
+  // -------------------------
+  const [redirecting, setRedirecting] = useState(false);
   const [prepDone, setPrepDone] = useState(false);
   const [prepError, setPrepError] = useState<string | null>(null);
 
-  // --------
-  // Gate de auth (não renderiza enquanto Clerk não carregou)
-  // --------
+  const [tokenType, setTokenType] = useState<TokenType>("");
+  const [publicName, setPublicName] = useState("");
+  const [tokenName, setTokenName] = useState("");
+  const [ticker, setTicker] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [story, setStory] = useState("");
+
+  // 🔢 Economia do token
+  const [initialSupply, setInitialSupply] = useState(""); // quantidade total emitida
+  const [poolPercent, setPoolPercent] = useState(""); // % do supply que vai pra pool
+  const [faceValue, setFaceValue] = useState(""); // valor de face inicial
+
+  // 📊 Simulação de volume de trade
+  const [simVolumeDay, setSimVolumeDay] = useState("");
+
+  // ✅ Riscos obrigatórios
+  const [riskNotInvestment, setRiskNotInvestment] = useState(false);
+  const [riskCanZero, setRiskCanZero] = useState(false);
+  const [riskCreatorRole, setRiskCreatorRole] = useState(false);
+
+  // -------------------------
+  // Gate de auth
+  // -------------------------
   useEffect(() => {
     if (!authLoaded) return;
     if (!isSignedIn) {
-      router.replace("/criador/login");
+      setRedirecting(true);
+      router.replace("/login");
     }
   }, [authLoaded, isSignedIn, router]);
 
-  // --------
-  // Tenta garantir perfil/carteira (best effort)
-  // Se sua app exige public.users existir, isso previne o erro global.
-  // NÃO trava se falhar.
-  // --------
+  // provisionamento best-effort (não trava)
   useEffect(() => {
     if (!authLoaded || !isSignedIn) return;
-
     let cancelled = false;
+
     (async () => {
       const ok = await ensureUserWalletBestEffort();
       if (cancelled) return;
-
       if (!ok) {
         setPrepError(
           "Seu perfil ainda está sendo preparado. Você pode continuar, mas se algo falhar, recarregue a página."
@@ -859,76 +885,20 @@ export default function CriarTokenPage() {
       setPrepDone(true);
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [authLoaded, isSignedIn]);
 
-  // Loader enquanto auth não carregou
-  if (!authLoaded || !userLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white">
-        <div className="animate-pulse text-neutral-500">
-          Verificando credenciais...
-        </div>
-      </div>
-    );
-  }
+  const isLoading = !authLoaded || !userLoaded;
+  const signedInStable = authLoaded && isSignedIn;
 
-  // Se não está logado, effect já redireciona
-  if (!isSignedIn) return null;
+  // Normaliza string numérica (aceita vírgula e ponto, remove lixo)
+  const normalizeNumber = (raw: string) =>
+    raw.replace(/[^\d.,]/g, "").replace(",", ".");
 
-  // opcional: se quiser forçar onboarding antes de criar token
-  // (mantém app consistente)
-  // if (!user?.publicMetadata?.onboarding_done) {
-  //   router.replace("/criador/onboarding");
-  //   return null;
-  // }
-
-  // --------
-  // Estado do form
-  // --------
-  const [tokenType, setTokenType] = useState<TokenType>("");
-  const [publicName, setPublicName] = useState("");
-  const [tokenName, setTokenName] = useState("");
-  const [ticker, setTicker] = useState("");
-  const [headline, setHeadline] = useState("");
-  const [story, setStory] = useState("");
-
-  const [initialSupply, setInitialSupply] = useState("");
-  const [poolPercent, setPoolPercent] = useState("");
-  const [faceValue, setFaceValue] = useState("");
-
-  const [simVolumeDay, setSimVolumeDay] = useState("");
-
-  const [riskNotInvestment, setRiskNotInvestment] = useState(false);
-  const [riskCanZero, setRiskCanZero] = useState(false);
-  const [riskCreatorRole, setRiskCreatorRole] = useState(false);
-
-  const normalizeNumber = (raw: string) => {
-    if (!raw) return "";
-    const cleaned = raw.replace(/[^\d.,]/g, "");
-    const noThousands = cleaned.replace(/\./g, "");
-    const normalized = noThousands.replace(/,/g, ".");
-    return normalized;
-  };
-
-  const parsedInitialSupply = useMemo(
-    () => Number(normalizeNumber(initialSupply)),
-    [initialSupply]
-  );
-  const parsedPoolPercent = useMemo(
-    () => Number(normalizeNumber(poolPercent)),
-    [poolPercent]
-  );
-  const parsedFaceValue = useMemo(
-    () => Number(normalizeNumber(faceValue)),
-    [faceValue]
-  );
-  const parsedSimVolumeDay = useMemo(
-    () => Number(normalizeNumber(simVolumeDay)),
-    [simVolumeDay]
-  );
+  const parsedInitialSupply = Number(normalizeNumber(initialSupply));
+  const parsedPoolPercent = Number(normalizeNumber(poolPercent));
+  const parsedFaceValue = Number(normalizeNumber(faceValue));
+  const parsedSimVolumeDay = Number(normalizeNumber(simVolumeDay));
 
   const hasEconomics =
     !Number.isNaN(parsedInitialSupply) &&
@@ -939,8 +909,9 @@ export default function CriarTokenPage() {
     !Number.isNaN(parsedFaceValue) &&
     parsedFaceValue > 0;
 
+  // Tokens na pool e bag do criador
   const tokensInPool =
-    hasEconomics
+    hasEconomics && parsedInitialSupply && parsedPoolPercent
       ? (parsedInitialSupply * parsedPoolPercent) / 100
       : null;
 
@@ -950,13 +921,13 @@ export default function CriarTokenPage() {
       : null;
 
   const estBaseLiquidity =
-    tokensInPool && parsedFaceValue > 0
+    tokensInPool && !Number.isNaN(parsedFaceValue)
       ? tokensInPool * parsedFaceValue
       : null;
 
+  // 💸 Simulação de taxa do criador (5% sobre o volume diário)
   const hasCustomVolume =
     !Number.isNaN(parsedSimVolumeDay) && parsedSimVolumeDay > 0;
-
   const baseVolumeForSim = hasCustomVolume
     ? parsedSimVolumeDay
     : DEFAULT_SIM_VOLUME;
@@ -964,8 +935,9 @@ export default function CriarTokenPage() {
   const simFeesDay = baseVolumeForSim * FEE_CREATOR_RATE;
   const simFeesMonth = simFeesDay * 30;
 
+  // 💰 Hipótese: toda a oferta é vendida a valor de face
   const totalSellAtFace =
-    hasEconomics
+    hasEconomics && !Number.isNaN(parsedInitialSupply) && parsedInitialSupply > 0
       ? parsedInitialSupply * parsedFaceValue
       : null;
 
@@ -974,7 +946,6 @@ export default function CriarTokenPage() {
     publicName.trim().length >= 2 &&
     tokenName.trim().length >= 2 &&
     ticker.trim().length >= 2 &&
-    ticker.trim().length <= 6 &&
     headline.trim().length >= 20 &&
     story.trim().length >= 40 &&
     hasEconomics &&
@@ -983,6 +954,22 @@ export default function CriarTokenPage() {
     riskCreatorRole;
 
   const handleContinue = () => {
+    console.log("[CRIAR TOKEN] Tentando continuar com estado atual:", {
+      tokenType,
+      publicName,
+      tokenName,
+      ticker,
+      headline,
+      story,
+      parsedInitialSupply,
+      parsedPoolPercent,
+      parsedFaceValue,
+      riskNotInvestment,
+      riskCanZero,
+      riskCreatorRole,
+      canContinue,
+    });
+
     if (!canContinue) {
       alert(
         "Você ainda não preencheu todos os campos obrigatórios ou marcou todos os riscos."
@@ -992,26 +979,32 @@ export default function CriarTokenPage() {
 
     const params = new URLSearchParams();
     params.set("type", tokenType);
-    params.set("publicName", publicName.trim());
-    params.set("tokenName", tokenName.trim());
-    params.set("ticker", ticker.trim().toUpperCase());
-    params.set("headline", headline.trim());
-    params.set("story", story.trim());
+    params.set("publicName", publicName);
+    params.set("tokenName", tokenName);
+    params.set("ticker", ticker);
+    params.set("headline", headline);
+    params.set("story", story);
     params.set("totalSupply", parsedInitialSupply.toString());
     params.set("poolPercent", parsedPoolPercent.toString());
     params.set("faceValue", parsedFaceValue.toString());
 
-    router.push(`/criador/token/checkout?${params.toString()}`);
+    const href = `/criador/token/checkout?${params.toString()}`;
+    console.log("[CRIAR TOKEN] Navegando para checkout:", href);
+    router.push(href);
   };
 
   const typeLabel =
     tokenType === "PESSOA"
       ? "Token de Pessoa"
       : tokenType === "PROJETO"
-      ? "Token de Projeto"
-      : tokenType === "COMUNIDADE"
-      ? "Token de Comunidade"
-      : "Token de Narrativa";
+        ? "Token de Projeto"
+        : tokenType === "COMUNIDADE"
+          ? "Token de Comunidade"
+          : "Token de Narrativa";
+
+  const tokenUrl = `https://app.3ustaquio.com/criador/token/${(ticker || "TOKEN")
+    .toLowerCase()
+    .replace(/\s+/g, "")}`;
 
   return (
     <>
@@ -1019,123 +1012,418 @@ export default function CriarTokenPage() {
 
       <main className="creator-screen">
         <div className="container creator-shell">
-          {/* banner de preparação (não bloqueia) */}
-          {prepDone && prepError && (
-            <div
-              className="warning-strip"
-              style={{ marginBottom: 12, borderColor: "#444" }}
-            >
-              {prepError}
+          {/* ✅ Loading/redirect sem quebrar hooks */}
+          {isLoading && (
+            <div className="min-h-[60vh] flex items-center justify-center text-neutral-500">
+              Verificando credenciais...
             </div>
           )}
 
-          <header className="creator-header">
-            <span className="creator-kicker">Jornada do Criador</span>
-            <h1 className="creator-title">
-              Crie seu <span>token de narrativa</span>
-            </h1>
-            <p className="creator-subtitle">
-              Não é plano de aposentadoria, não é “investimento seguro”. É um
-              token especulativo da sua história. Você cria, a comunidade decide
-              se entra no jogo.
-            </p>
-          </header>
-
-          <section className="creator-main">
-            {/* --- teu JSX original daqui pra baixo, sem mudanças --- */}
-            {/* Coluna esquerda – formulário */}
-            <div className="creator-form-side">
-              <div className="creator-card">
-                <div className="section-label">Passo – Criar moeda</div>
-                <h2 className="section-title">
-                  Quem é você, como esse token nasce e onde você ganha no jogo?
-                </h2>
-                <p className="section-subtitle">
-                  Aqui você define a narrativa e o modelo de lançamento. O resto
-                  é Arena: liquidez, hype e risco assumido.
-                </p>
-
-                {/* Tipo de token */}
-                <div className="creator-field-group">
-                  <label className="field-label">Tipo de token</label>
-                  <div className="creator-token-types">
-                    <button
-                      type="button"
-                      className={
-                        "creator-token-type" +
-                        (tokenType === "PESSOA"
-                          ? " creator-token-type--active"
-                          : "")
-                      }
-                      onClick={() => setTokenType("PESSOA")}
-                    >
-                      <strong>Pessoa</strong>
-                      <span>Você como ativo de narrativa.</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={
-                        "creator-token-type" +
-                        (tokenType === "PROJETO"
-                          ? " creator-token-type--active"
-                          : "")
-                      }
-                      onClick={() => setTokenType("PROJETO")}
-                    >
-                      <strong>Projeto</strong>
-                      <span>Uma missão ou iniciativa específica.</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={
-                        "creator-token-type" +
-                        (tokenType === "COMUNIDADE"
-                          ? " creator-token-type--active"
-                          : "")
-                      }
-                      onClick={() => setTokenType("COMUNIDADE")}
-                    >
-                      <strong>Comunidade</strong>
-                      <span>Grupo, crew, guilda, fandom.</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* ... resto do teu form e preview igual ... */}
-
-                <div className="creator-footer" style={{ marginTop: "16px" }}>
-                  <div className="creator-footer-right">
-                    <button
-                      type="button"
-                      className={`btn-primary creator-nav-btn ${
-                        !canContinue ? "opacity-60 cursor-not-allowed" : ""
-                      }`}
-                      disabled={!canContinue}
-                      onClick={handleContinue}
-                    >
-                      Continuar para pagamento & lançamento
-                    </button>
-                  </div>
-                </div>
-              </div>
+          {!isLoading && !signedInStable && redirecting && (
+            <div className="min-h-[60vh] flex items-center justify-center text-neutral-500">
+              Redirecionando para login...
             </div>
+          )}
 
-            {/* Coluna direita – preview */}
-            <aside className="creator-preview-side">
-              <div className="creator-preview-card">
-                <div className="creator-preview-header">
-                  <span className="creator-preview-pill">{typeLabel}</span>
-                  <span className="creator-preview-status">
-                    Risco alto · Especulação
-                  </span>
+          {/* ✅ Conteúdo só quando logado */}
+          {!isLoading && signedInStable && (
+            <>
+              {/* banner de preparação (não bloqueia) */}
+              {prepDone && prepError && (
+                <div
+                  className="warning-strip"
+                  style={{ marginBottom: 12, borderColor: "#444" }}
+                >
+                  {prepError}
+                </div>
+              )}
+
+              <header className="creator-header">
+                <span className="creator-kicker">Jornada do Criador</span>
+                <h1 className="creator-title">
+                  Crie seu <span>token de narrativa</span>
+                </h1>
+                <p className="creator-subtitle">
+                  Não é plano de aposentadoria, não é “investimento seguro”. É um
+                  token especulativo da sua história. Você cria, a comunidade decide
+                  se entra no jogo.
+                </p>
+              </header>
+
+              <section className="creator-main">
+                {/* Coluna esquerda – formulário */}
+                <div className="creator-form-side">
+                  <div className="creator-card">
+                    <div className="section-label">Passo – Criar moeda</div>
+                    <h2 className="section-title">
+                      Quem é você, como esse token nasce e onde você ganha no jogo?
+                    </h2>
+                    <p className="section-subtitle">
+                      Aqui você define a narrativa e o modelo de lançamento. O
+                      resto é Arena: liquidez, hype e risco assumido.
+                    </p>
+
+                    {/* Tipo de token */}
+                    <div className="creator-field-group">
+                      <label className="field-label">Tipo de token</label>
+                      <div className="creator-token-types">
+                        <button
+                          type="button"
+                          className={
+                            "creator-token-type" +
+                            (tokenType === "PESSOA"
+                              ? " creator-token-type--active"
+                              : "")
+                          }
+                          onClick={() => setTokenType("PESSOA")}
+                        >
+                          <strong>Pessoa</strong>
+                          <span>Você como ativo de narrativa.</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            "creator-token-type" +
+                            (tokenType === "PROJETO"
+                              ? " creator-token-type--active"
+                              : "")
+                          }
+                          onClick={() => setTokenType("PROJETO")}
+                        >
+                          <strong>Projeto</strong>
+                          <span>Uma missão ou iniciativa específica.</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            "creator-token-type" +
+                            (tokenType === "COMUNIDADE"
+                              ? " creator-token-type--active"
+                              : "")
+                          }
+                          onClick={() => setTokenType("COMUNIDADE")}
+                        >
+                          <strong>Comunidade</strong>
+                          <span>Grupo, crew, guilda, fandom.</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Nome público + nome token */}
+                    <div className="creator-two-cols">
+                      <div className="creator-field-group">
+                        <label className="field-label">Nome público</label>
+                        <input
+                          className="field-input"
+                          value={publicName}
+                          onChange={(e) => setPublicName(e.target.value)}
+                          placeholder="Ex: Joaquim, Bar do Zé, Crew da Pista"
+                        />
+                        <p className="field-help">
+                          É o nome que a galera já reconhece. Nada de personagem
+                          aleatório.
+                        </p>
+                      </div>
+
+                      <div className="creator-field-group">
+                        <label className="field-label">Nome do token</label>
+                        <input
+                          className="field-input"
+                          value={tokenName}
+                          onChange={(e) => setTokenName(e.target.value)}
+                          placeholder="Ex: ZETOKEN, HYPEBRENEL"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Ticker */}
+                    <div className="creator-field-group">
+                      <label className="field-label">Ticker (símbolo curto)</label>
+                      <input
+                        className="field-input"
+                        value={ticker}
+                        onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                        placeholder="3–6 letras, ex: ZETK, BRNL, CREW"
+                      />
+                      <p className="field-help">
+                        Precisa ser falável e memético. Esquece “BRASILCOIN”.
+                      </p>
+                    </div>
+
+                    {/* Headline */}
+                    <div className="creator-field-group">
+                      <label className="field-label">Frase curta para a Arena</label>
+                      <textarea
+                        className="field-textarea"
+                        rows={2}
+                        value={headline}
+                        onChange={(e) => setHeadline(e.target.value)}
+                        placeholder="Token da nossa comunidade para brincar de mercado com a nossa história. Alto risco, zero promessa de retorno."
+                      />
+                      <p className="field-help">
+                        Frase que aparece no topo da página do token. Direta, sem
+                        vender milagre.
+                      </p>
+                    </div>
+
+                    {/* História */}
+                    <div className="creator-field-group">
+                      <label className="field-label">História / narrativa</label>
+                      <textarea
+                        className="field-textarea"
+                        rows={6}
+                        value={story}
+                        onChange={(e) => setStory(e.target.value)}
+                        placeholder="Explique quem é você/comunidade, por que esse token existe, o que as pessoas estão sinalizando ao comprar e por que isso é um experimento — não um plano de aposentadoria."
+                      />
+                    </div>
+
+                    {/* ⚙️ Configuração econômica do lançamento */}
+                    <div className="creator-field-group">
+                      <label className="field-label">
+                        Modelo de lançamento (travado depois de lançar)
+                      </label>
+                      <p className="field-help">
+                        Esses números definem como seu token entra na Arena.{" "}
+                        <strong>
+                          Depois de lançado, supply inicial, % da pool e valor de
+                          face não poderão ser alterados.
+                        </strong>
+                      </p>
+                    </div>
+
+                    <div className="creator-two-cols">
+                      <div className="creator-field-group">
+                        <label className="field-label">
+                          Quantidade total de tokens (supply inicial)
+                        </label>
+                        <input
+                          className="field-input"
+                          value={initialSupply}
+                          onChange={(e) =>
+                            setInitialSupply(
+                              e.target.value.replace(/[^\d.,]/g, "")
+                            )
+                          }
+                          placeholder="Ex: 1.000.000"
+                          inputMode="decimal"
+                        />
+                        <p className="field-help">
+                          Total de unidades que nascem no dia 0. Não é
+                          recomendação, é sua visão de jogo.
+                        </p>
+                      </div>
+
+                      <div className="creator-field-group">
+                        <label className="field-label">
+                          Valor de face no lançamento (por token)
+                        </label>
+                        <input
+                          className="field-input"
+                          value={faceValue}
+                          onChange={(e) =>
+                            setFaceValue(e.target.value.replace(/[^\d.,]/g, ""))
+                          }
+                          placeholder="Ex: 0,10 (em base interna)"
+                          inputMode="decimal"
+                        />
+                        <p className="field-help">
+                          Preço inicial de referência na moeda base interna (ex.:
+                          BRL interno). Depois disso, o mercado faz o resto.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="creator-field-group">
+                      <label className="field-label">
+                        % do supply que vai para o pool de lançamento
+                      </label>
+                      <input
+                        className="field-input"
+                        value={poolPercent}
+                        onChange={(e) =>
+                          setPoolPercent(e.target.value.replace(/[^\d.,]/g, ""))
+                        }
+                        placeholder="Ex: 20"
+                        inputMode="decimal"
+                      />
+                      <p className="field-help">
+                        Parte da moeda que entra direto na pool de liquidez
+                        inicial (AMM). O resto é sua bag fora da pool, sob sua
+                        responsabilidade. Configuração travada no lançamento.
+                      </p>
+                    </div>
+
+                    {/* ... TODO O RESTO DO TEU FORM IGUAL ... */}
+
+                    <div className="creator-footer" style={{ marginTop: "16px" }}>
+                      <div className="creator-footer-left">
+                        <p className="creator-footer-hint">
+                          Nada será lançado sem você revisar e pagar a taxa. Esta
+                          etapa é só para desenhar o token e o modelo de
+                          lançamento.
+                        </p>
+                      </div>
+                      <div className="creator-footer-right">
+                        <button
+                          type="button"
+                          className={`btn-primary creator-nav-btn ${
+                            !canContinue ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
+                          disabled={!canContinue}
+                          onClick={handleContinue}
+                          title={
+                            canContinue
+                              ? "Avançar para o checkout"
+                              : "Preencha todos os campos e marque as caixas de risco"
+                          }
+                        >
+                          Continuar para pagamento & lançamento
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* ... preview igual ... */}
-              </div>
-            </aside>
-          </section>
+                {/* Coluna direita – preview */}
+                <aside className="creator-preview-side">
+                  <div className="creator-preview-card">
+                    <div className="creator-preview-header">
+                      <span className="creator-preview-pill">{typeLabel}</span>
+                      <span className="creator-preview-status">
+                        Risco alto · Especulação
+                      </span>
+                    </div>
+
+                    {/* ... TEU PREVIEW IGUAL ... */}
+                    <div className="creator-preview-main">
+                      <div className="creator-preview-title-row">
+                        <h3 className="creator-preview-title">
+                          {tokenName || "Seu token aqui"}
+                        </h3>
+                        <span className="creator-preview-ticker">
+                          {ticker || "TICKER"}
+                        </span>
+                      </div>
+
+                      <p className="creator-preview-creator">
+                        por <strong>{publicName || "Criador anônimo"}</strong>
+                      </p>
+
+                      <p className="creator-preview-headline">
+                        {headline ||
+                          "Escreva uma frase curta explicando que isso é jogo de narrativa de alto risco, não promessa de retorno."}
+                      </p>
+
+                      <div className="creator-preview-riskband">
+                        <span className="creator-preview-riskdot" />
+                        <span>
+                          Não é produto financeiro regulado. Preço pode ir a zero.
+                          Entre por conta e risco.
+                        </span>
+                      </div>
+
+                      <div className="creator-preview-metrics">
+                        <div>
+                          <span className="metric-label">Supply inicial</span>
+                          <span className="metric-value">
+                            {!Number.isNaN(parsedInitialSupply) &&
+                            parsedInitialSupply > 0
+                              ? parsedInitialSupply.toLocaleString("pt-BR")
+                              : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="metric-label">Pool de lançamento</span>
+                          <span className="metric-value">
+                            {!Number.isNaN(parsedPoolPercent) &&
+                            parsedPoolPercent > 0
+                              ? `${parsedPoolPercent}%${
+                                  tokensInPool
+                                    ? ` (${tokensInPool.toLocaleString("pt-BR")} tokens)`
+                                    : ""
+                                }`
+                              : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="metric-label">Valor de face</span>
+                          <span className="metric-value">
+                            {!Number.isNaN(parsedFaceValue) && parsedFaceValue > 0
+                              ? `R$ ${parsedFaceValue.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 8,
+                                })}`
+                              : "—"}
+                          </span>
+                        </div>
+                        {creatorBagTokens !== null && creatorBagTokens > 0 && (
+                          <div>
+                            <span className="metric-label">
+                              Bag do criador (fora da pool)
+                            </span>
+                            <span className="metric-value">
+                              {creatorBagTokens.toLocaleString("pt-BR")} tokens
+                            </span>
+                          </div>
+                        )}
+                        {estBaseLiquidity && (
+                          <div>
+                            <span className="metric-label">
+                              Liquidez inicial estimada (base)
+                            </span>
+                            <span className="metric-value">
+                              R$ {estBaseLiquidity.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                        )}
+                        {totalSellAtFace && totalSellAtFace > 0 && (
+                          <div>
+                            <span className="metric-label">
+                              Se TODA a oferta fosse vendida a valor de face
+                            </span>
+                            <span className="metric-value">
+                              R$ {totalSellAtFace.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              <span className="metric-note">
+                                (exemplo matemático, não projeção de retorno)
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                        {simFeesDay && (
+                          <div>
+                            <span className="metric-label">
+                              Taxa do criador (5% sobre o volume simulado)
+                            </span>
+                            <span className="metric-value">
+                              ~ R$ {simFeesDay.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              / dia
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="creator-preview-footer">
+                      <span className="creator-preview-link-label">
+                        Link da Arena (simulado)
+                      </span>
+                      <span className="creator-preview-link">{tokenUrl}</span>
+                    </div>
+                  </div>
+                </aside>
+              </section>
+            </>
+          )}
         </div>
 
         <Footer3ustaquio />
