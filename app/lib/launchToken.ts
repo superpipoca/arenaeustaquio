@@ -67,11 +67,13 @@
 //   return body as LaunchTokenResponse;
 // }
 // app/lib/launchToken.ts
-// app/lib/launchToken.ts
-"use client";
+// app/lib/launchToken.ts (CLIENT-SIDE)
 
-export type LaunchTokenInput = {
-  tokenType: "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
+type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
+
+export type LaunchTokenAfterPixPayload = {
+  clerkToken: string;        // ✅ vem do getToken()
+  tokenType: TokenType;
   publicName: string;
   tokenName: string;
   ticker: string;
@@ -81,55 +83,50 @@ export type LaunchTokenInput = {
   poolPercent: number;
   faceValue: number;
   pixData: any;
-  clerkToken?: string; // vindo do getToken()
 };
 
-type LaunchTokenResult = { coinId: string; slug: string };
+export type LaunchTokenAfterPixResponse = {
+  coinId: string;
+  slug: string;
+};
 
 export async function launchTokenAfterPix(
-  input: LaunchTokenInput
-): Promise<LaunchTokenResult> {
-  console.log("[LAUNCH] Chamando /api/launch-token-after-pix", input);
+  payload: LaunchTokenAfterPixPayload
+): Promise<LaunchTokenAfterPixResponse> {
+  const { clerkToken, ...body } = payload;
+
+  // console.log("clerkToken " + clerkToken);
+
+  if (!clerkToken) {
+    throw new Error("clerkToken ausente. Faça login novamente.");
+  }
 
   const res = await fetch("/api/launch-token-after-pix", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(input.clerkToken
-        ? { Authorization: `Bearer ${input.clerkToken}` }
-        : {}),
+      Authorization: `Bearer ${clerkToken}`, // ✅ pulo do gato
     },
-    credentials: "include", // garante cookie de sessão também
-    body: JSON.stringify(input),
+    body: JSON.stringify(body),
   });
 
-  const rawText = await res.text();
-  let body: any = null;
-  try {
-    body = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    body = null;
-  }
+  console.log("retorno do pix " + JSON.stringify(res));
 
   if (!res.ok) {
-    console.error("[LAUNCH] Falha ao lançar token:", {
-      status: res.status,
-      body,
-      rawText,
-    });
+    // tenta ler erro JSON primeiro, depois texto
+    let msg = "";
+    try {
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("application/json")) {
+        const j = await res.json();
+        msg = j?.message || j?.error || JSON.stringify(j);
+      } else {
+        msg = await res.text();
+      }
+    } catch {}
 
-    const code = body?.error || `LAUNCH_FAIL_${res.status}`;
-    const msg =
-      body?.message ||
-      body?.long_message ||
-      "Falha ao lançar token. Tente novamente.";
-
-    const err = new Error(code);
-    (err as any).status = res.status;
-    (err as any).body = body;
-    (err as any).message = msg;
-    throw err;
+    throw new Error(msg || `Erro ${res.status} ao lançar token.`);
   }
 
-  return body as LaunchTokenResult;
+  return res.json();
 }

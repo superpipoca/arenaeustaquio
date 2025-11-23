@@ -431,16 +431,13 @@
 //     );
 //   }
 // }
+// app/api/launch-token-after-pix/route.ts
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 
-// Se você tiver Database types, use: createClient<Database>(...)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // <- SERVICE ROLE aqui
-);
+export const runtime = "nodejs"; // garante crypto + SDK Clerk backend ok
 
 type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
 
@@ -457,6 +454,14 @@ type LaunchBody = {
   pixData: any;
 };
 
+// --- Supabase admin client (service role) ---
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  if (!url || !key) throw new Error("SUPABASE_ENV_MISSING");
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
 function slugify(s: string) {
   return s
     .toLowerCase()
@@ -466,18 +471,85 @@ function slugify(s: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+// helper simples
+const makeReqId = () => Math.random().toString(36).slice(2, 10);
+
 export async function POST(req: Request) {
+  const reqId = makeReqId();
+  const t0 = Date.now();
+
+  // ✅ LOG CORRETO DO REQUEST (Request não serializa em JSON)
+  const headersObj = Object.fromEntries(req.headers.entries());
+  console.log(`[LAUNCH ${reqId}] incoming`, {
+    method: req.method,
+    url: req.url,
+    hasAuth: !!headersObj.authorization,
+    authPreview: headersObj.authorization
+      ? headersObj.authorization.slice(0, 20) + "..."
+      : null,
+    hasCookie: !!headersObj.cookie,
+    cookieHasSession: headersObj.cookie?.includes("__session") ?? false,
+    origin: headersObj.origin,
+    host: headersObj.host,
+  });
+
   try {
-    // ===== 0) Auth Clerk =====
-    const { userId: clerkUserId } = auth();
+    // =========================
+    // 0) Auth Clerk (async!)
+    // =========================
+    let clerkUserId: string | null = null;
+
+    // path padrão (com proxy/clerkMiddleware cobrindo /api)
+    try {
+      const a = await auth(); // ✅ precisa await
+      clerkUserId = a.userId ?? null;
+
+      console.log(`[LAUNCH ${reqId}] auth() result`, {
+        clerkUserId,
+        sessionId: a.sessionId ?? null,
+        isAuthenticated: a.isAuthenticated ?? !!clerkUserId,
+      });
+    } catch (e) {
+      console.warn(`[LAUNCH ${reqId}] auth() threw`, e);
+    }
+
+    // fallback se auth() não detectou
     if (!clerkUserId) {
+      const client = await clerkClient();
+      const { isAuthenticated, sessionClaims } =
+        await client.authenticateRequest(req, {
+          jwtKey: process.env.CLERK_JWT_KEY,
+        });
+
+      clerkUserId = isAuthenticated ? (sessionClaims?.sub as string) : null;
+
+      console.log(`[LAUNCH ${reqId}] authenticateRequest() fallback`, {
+        isAuthenticated,
+        clerkUserId,
+      });
+    }
+
+    if (!clerkUserId) {
+      console.warn(`[LAUNCH ${reqId}] UNAUTHENTICATED -> 401`);
       return NextResponse.json(
         { error: "UNAUTHENTICATED", message: "Faça login para lançar." },
         { status: 401 }
       );
     }
 
-    const body = (await req.json()) as LaunchBody;
+    // =========================
+    // 1) Body
+    // =========================
+    let body: LaunchBody;
+    try {
+      body = (await req.json()) as LaunchBody;
+    } catch (e) {
+      console.error(`[LAUNCH ${reqId}] BAD_JSON`, e);
+      return NextResponse.json(
+        { error: "BAD_JSON", message: "Body inválido (JSON)." },
+        { status: 400 }
+      );
+    }
 
     const {
       tokenType,
@@ -492,19 +564,39 @@ export async function POST(req: Request) {
       pixData,
     } = body;
 
-    // validações mínimas server-side
+    console.log(`[LAUNCH ${reqId}] body ok`, {
+      tokenType,
+      publicName,
+      tokenName,
+      ticker,
+      totalSupply,
+      poolPercent,
+      faceValue,
+      hasPixData: !!pixData,
+    });
+
+    // validações mínimas
     if (!tokenName || !ticker || !headline || !story) {
       return NextResponse.json(
         { error: "VALIDATION_FAIL", message: "Campos obrigatórios faltando." },
         { status: 400 }
       );
     }
-    if (!(totalSupply > 0 && poolPercent > 0 && poolPercent <= 100 && faceValue > 0)) {
+    if (
+      !(
+        totalSupply > 0 &&
+        poolPercent > 0 &&
+        poolPercent <= 100 &&
+        faceValue > 0
+      )
+    ) {
       return NextResponse.json(
         { error: "ECONOMICS_FAIL", message: "Supply/%Pool/Face inválidos." },
         { status: 400 }
       );
     }
+
+    const supabaseAdmin = getSupabaseAdmin();
 
     // ===== 1) Garante user interno via clerk_user_id =====
     const { data: existingUser, error: selUserErr } = await supabaseAdmin
@@ -514,7 +606,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (selUserErr) {
-      console.error("[API LAUNCH] users select error", selUserErr);
+      console.error(`[LAUNCH ${reqId}] users select error`, selUserErr);
       return NextResponse.json(
         { error: "USERS_SELECT_FAIL", detail: selUserErr.message },
         { status: 500 }
@@ -525,9 +617,7 @@ export async function POST(req: Request) {
 
     if (!userIdInternal) {
       const cu = await currentUser();
-      const email =
-        cu?.emailAddresses?.[0]?.emailAddress ??
-        null;
+      const email = cu?.emailAddresses?.[0]?.emailAddress ?? null;
 
       const displayName =
         cu?.fullName ??
@@ -542,9 +632,10 @@ export async function POST(req: Request) {
         email?.split("@")[0] ??
         `user_${clerkUserId.slice(0, 8)}`;
 
-      const baseUsername = slugify(baseUsernameRaw).replace(/-/g, "_") || `user_${clerkUserId.slice(0, 8)}`;
+      const baseUsername =
+        slugify(baseUsernameRaw).replace(/-/g, "_") ||
+        `user_${clerkUserId.slice(0, 8)}`;
 
-      // tenta alguns sufixos pra evitar colisão de username UNIQUE
       let inserted: { id: string; username: string } | null = null;
       for (let i = 0; i < 6; i++) {
         const attempt = i === 0 ? baseUsername : `${baseUsername}_${i + 1}`;
@@ -552,8 +643,8 @@ export async function POST(req: Request) {
         const { data: newUser, error: insUserErr } = await supabaseAdmin
           .from("users")
           .insert({
-            clerk_user_id: clerkUserId, // <<< AQUI é Clerk
-            auth_user_id: null,         // <<< deixa legado nulo
+            clerk_user_id: clerkUserId,
+            auth_user_id: null,
             role: "CREATOR",
             display_name: displayName,
             username: attempt,
@@ -566,10 +657,9 @@ export async function POST(req: Request) {
           break;
         }
 
-        // se foi erro de unique username, tenta outro sufixo
         const msg = insUserErr?.message?.toLowerCase() || "";
         if (!msg.includes("username") && !msg.includes("unique")) {
-          console.error("[API LAUNCH] users insert error", insUserErr);
+          console.error(`[LAUNCH ${reqId}] users insert error`, insUserErr);
           return NextResponse.json(
             { error: "USERS_INSERT_FAIL", detail: insUserErr?.message },
             { status: 500 }
@@ -579,7 +669,10 @@ export async function POST(req: Request) {
 
       if (!inserted) {
         return NextResponse.json(
-          { error: "USERS_INSERT_FAIL", message: "Não consegui criar usuário interno." },
+          {
+            error: "USERS_INSERT_FAIL",
+            message: "Não consegui criar usuário interno.",
+          },
           { status: 500 }
         );
       }
@@ -587,15 +680,16 @@ export async function POST(req: Request) {
       userIdInternal = inserted.id;
     }
 
-    // ===== 2) Garante creator (public.creators) =====
-    const { data: existingCreator, error: selCreatorErr } = await supabaseAdmin
-      .from("creators")
-      .select("id")
-      .eq("user_id", userIdInternal)
-      .maybeSingle();
+    // ===== 2) Garante creator =====
+    const { data: existingCreator, error: selCreatorErr } =
+      await supabaseAdmin
+        .from("creators")
+        .select("id")
+        .eq("user_id", userIdInternal)
+        .maybeSingle();
 
     if (selCreatorErr) {
-      console.error("[API LAUNCH] creators select error", selCreatorErr);
+      console.error(`[LAUNCH ${reqId}] creators select error`, selCreatorErr);
       return NextResponse.json(
         { error: "CREATOR_SELECT_FAIL", detail: selCreatorErr.message },
         { status: 500 }
@@ -615,7 +709,7 @@ export async function POST(req: Request) {
         .single();
 
       if (insCreatorErr || !newCreator) {
-        console.error("[API LAUNCH] creators insert error", insCreatorErr);
+        console.error(`[LAUNCH ${reqId}] creators insert error`, insCreatorErr);
         return NextResponse.json(
           { error: "CREATOR_INSERT_FAIL", detail: insCreatorErr?.message },
           { status: 500 }
@@ -632,7 +726,6 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (tickerErr) {
-      console.error("[API LAUNCH] ticker check error", tickerErr);
       return NextResponse.json(
         { error: "TICKER_CHECK_FAIL", detail: tickerErr.message },
         { status: 500 }
@@ -655,7 +748,6 @@ export async function POST(req: Request) {
       .single();
 
     if (coinTypeErr || !coinType) {
-      console.error("[API LAUNCH] coin_types error", coinTypeErr);
       return NextResponse.json(
         { error: "COIN_TYPE_FAIL", detail: coinTypeErr?.message },
         { status: 500 }
@@ -681,14 +773,13 @@ export async function POST(req: Request) {
       .single();
 
     if (poolWalletErr || !poolWallet) {
-      console.error("[API LAUNCH] pool wallet error", poolWalletErr);
       return NextResponse.json(
         { error: "POOL_WALLET_FAIL", detail: poolWalletErr?.message },
         { status: 500 }
       );
     }
 
-    // ===== 7) wallet do criador (pra BAG) =====
+    // ===== 7) wallet criador =====
     const { data: creatorWallet } = await supabaseAdmin
       .from("wallets")
       .select("id, wallet_type")
@@ -728,7 +819,6 @@ export async function POST(req: Request) {
       .single();
 
     if (coinErr || !coin) {
-      console.error("[API LAUNCH] coin insert error", coinErr);
       return NextResponse.json(
         { error: "COIN_INSERT_FAIL", detail: coinErr?.message },
         { status: 500 }
@@ -759,11 +849,7 @@ export async function POST(req: Request) {
     const { error: wbErr } = await supabaseAdmin
       .from("wallet_balances")
       .insert(balanceRows);
-
-    if (wbErr) {
-      console.error("[API LAUNCH] wallet_balances error", wbErr);
-      // não derruba o fluxo
-    }
+    if (wbErr) console.error(`[LAUNCH ${reqId}] wallet_balances error`, wbErr);
 
     // ===== 12) init AMM =====
     const { error: ammErr } = await supabaseAdmin.rpc(
@@ -774,22 +860,15 @@ export async function POST(req: Request) {
         p_coin_reserve: poolCoins.toString(),
       }
     );
-
-    if (ammErr) {
-      console.error("[API LAUNCH] init_coin_market_state error", ammErr);
-    }
+    if (ammErr) console.error(`[LAUNCH ${reqId}] AMM init error`, ammErr);
 
     // ===== 13) deposits =====
     try {
       const firstTx = pixData?.Charge?.Transactions?.[0];
       const pix = firstTx?.Pix;
       const ref =
-        pix?.reference ||
-        `charge_${pixData?.Charge?.galaxPayId ?? ""}`;
-
-      const amountBase = firstTx?.value
-        ? firstTx.value / 100
-        : null;
+        pix?.reference || `charge_${pixData?.Charge?.galaxPayId ?? ""}`;
+      const amountBase = firstTx?.value ? firstTx.value / 100 : null;
 
       if (amountBase != null) {
         const { data: platformWallet } = await supabaseAdmin
@@ -813,7 +892,7 @@ export async function POST(req: Request) {
         }
       }
     } catch (e) {
-      console.warn("[API LAUNCH] deposit warn", e);
+      console.warn(`[LAUNCH ${reqId}] deposit warn`, e);
     }
 
     // ===== 14) post system =====
@@ -833,15 +912,22 @@ export async function POST(req: Request) {
           poolCoins,
           bagCoins,
           baseReserve,
+          clerkUserId,
         },
       });
     } catch (e) {
-      console.warn("[API LAUNCH] posts warn", e);
+      console.warn(`[LAUNCH ${reqId}] posts warn`, e);
     }
+
+    console.log(`[LAUNCH ${reqId}] success`, {
+      coinId,
+      slug,
+      ms: Date.now() - t0,
+    });
 
     return NextResponse.json({ coinId, slug }, { status: 200 });
   } catch (err: any) {
-    console.error("[API LAUNCH] fatal", err);
+    console.error(`[LAUNCH ${reqId}] fatal`, err);
     return NextResponse.json(
       { error: "INTERNAL_ERROR", detail: err?.message },
       { status: 500 }

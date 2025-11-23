@@ -4410,3 +4410,21 @@ create unique index if not exists users_clerk_user_id_key
 
 -- (opcional) se tinha FK auth_user_id -> auth.users e você não usa mais:
 -- alter table public.users drop constraint if exists users_auth_user_id_fkey;
+
+
+-- 1) adiciona a coluna que seu código espera
+alter table public.creators
+  add column if not exists public_name text;
+
+-- 2) (opcional) backfill pra quem já existe
+-- se quiser puxar do users.display_name:
+update public.creators c
+set public_name = u.display_name
+from public.users u
+where c.public_name is null
+  and c.user_id = u.id;
+
+-- 3) (opcional) depois do backfill, trava como NOT NULL
+-- só rode se tiver certeza que não ficou null:
+alter table public.creators
+  alter column public_name set not null;

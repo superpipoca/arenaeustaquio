@@ -455,7 +455,10 @@ import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const runtime = "nodejs"; // garante ambiente Node (Clerk + service role)
+
 type TokenType = "PESSOA" | "PROJETO" | "COMUNIDADE" | "";
+
 type LaunchTokenInput = {
   tokenType: TokenType;
   publicName: string;
@@ -481,36 +484,108 @@ function getSupabaseAdmin() {
   });
 }
 
-export async function POST(req: Request) {
+// helper: cria um id curto para logs
+function makeReqId() {
   try {
-    // 1) Auth Clerk (cookie __session OU Authorization Bearer) :contentReference[oaicite:2]{index=2}
-    const client = await clerkClient();
-    const { isAuthenticated, sessionClaims } =
-      await client.authenticateRequest(req, {
-        // se tiver CLERK_JWT_KEY você pode setar pra auth networkless
-        jwtKey: process.env.CLERK_JWT_KEY,
-      });
+    return crypto.randomUUID().slice(0, 8);
+  } catch {
+    return Math.random().toString(36).slice(2, 10);
+  }
+}
 
-    if (!isAuthenticated) {
+export async function POST(req: Request) {
+  const reqId = makeReqId();
+  const t0 = Date.now();
+  console.time(`[LAUNCH ${reqId}] total`);
+
+  // ========= LOGS DE ENTRADA =========
+  const method = req.method;
+  const url = req.url;
+
+  const authHeader = req.headers.get("authorization");
+  const cookieHeader = req.headers.get("cookie");
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("host");
+  const ua = req.headers.get("user-agent");
+
+  console.log(`[LAUNCH ${reqId}] >>> incoming`, {
+    method,
+    url,
+    host,
+    origin,
+    ua: ua?.slice(0, 60),
+    hasAuthorization: !!authHeader,
+    authorizationPreview: authHeader
+      ? `${authHeader.split(" ")[0]} *** (${authHeader.length} chars)`
+      : null,
+    hasCookie: !!cookieHeader,
+    hasSessionCookie: cookieHeader?.includes("__session") ?? false,
+  });
+
+  // ========= CHECK ENV =========
+  console.log(`[LAUNCH ${reqId}] env check`, {
+    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    hasClerkSecret: !!process.env.CLERK_SECRET_KEY,
+    hasClerkPub: !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    hasClerkJwtKey: !!process.env.CLERK_JWT_KEY,
+    nodeEnv: process.env.NODE_ENV,
+  });
+
+  try {
+    // 1) ✅ Auth Clerk pelo Bearer/cookie (não depende só de cookie)
+    console.time(`[LAUNCH ${reqId}] clerk.authenticateRequest`);
+    const { isAuthenticated, sessionClaims } =
+      await clerkClient.authenticateRequest(req, {
+        jwtKey: process.env.CLERK_JWT_KEY, // opcional p/ networkless
+      });
+    console.timeEnd(`[LAUNCH ${reqId}] clerk.authenticateRequest`);
+
+    const clerkUserId = sessionClaims?.sub ?? null;
+    const sessionId = (sessionClaims as any)?.sid ?? null;
+
+    console.log(`[LAUNCH ${reqId}] authenticateRequest`, {
+      isAuthenticated,
+      clerkUserId,
+      sessionId,
+      authed: !!clerkUserId,
+    });
+
+    if (!isAuthenticated || !clerkUserId) {
+      console.warn(`[LAUNCH ${reqId}] UNAUTHENTICATED -> 401`);
       return NextResponse.json(
         { error: "UNAUTHENTICATED", message: "Faça login para lançar." },
         { status: 401 }
       );
     }
 
-    const clerkUserId = sessionClaims?.sub;
-    if (!clerkUserId) {
+    // 2) Body
+    let input: LaunchTokenInput | null = null;
+    try {
+      input = (await req.json()) as LaunchTokenInput;
+    } catch (e) {
+      console.error(`[LAUNCH ${reqId}] body parse fail`, e);
       return NextResponse.json(
-        { error: "UNAUTHENTICATED", message: "Sessão inválida." },
-        { status: 401 }
+        { error: "BAD_JSON", message: "Body inválido (JSON)." },
+        { status: 400 }
       );
     }
 
-    // 2) Body
-    const input = (await req.json()) as LaunchTokenInput;
+    console.log(`[LAUNCH ${reqId}] body received`, {
+      tokenType: input.tokenType,
+      publicName: input.publicName?.slice(0, 40),
+      tokenName: input.tokenName,
+      ticker: input.ticker,
+      hasHeadline: !!input.headline,
+      hasStory: !!input.story,
+      totalSupply: input.totalSupply,
+      poolPercent: input.poolPercent,
+      faceValue: input.faceValue,
+      hasPixData: !!input.pixData,
+    });
 
-    // valida mínimo
     if (!input?.tokenName || !input?.ticker) {
+      console.warn(`[LAUNCH ${reqId}] BAD_REQUEST missing tokenName/ticker`);
       return NextResponse.json(
         { error: "BAD_REQUEST", message: "tokenName/ticker obrigatórios." },
         { status: 400 }
@@ -518,16 +593,19 @@ export async function POST(req: Request) {
     }
 
     const supabase = getSupabaseAdmin();
+    console.log(`[LAUNCH ${reqId}] supabase admin ok`);
 
     // 3) users: garante public.users
+    console.time(`[LAUNCH ${reqId}] users.find`);
     const { data: existingUser, error: userFindErr } = await supabase
       .from("users")
       .select("id")
       .eq("auth_user_id", clerkUserId)
       .maybeSingle();
+    console.timeEnd(`[LAUNCH ${reqId}] users.find`);
 
     if (userFindErr) {
-      console.error("[LAUNCH][users find]", userFindErr);
+      console.error(`[LAUNCH ${reqId}] users.find FAIL`, userFindErr);
       return NextResponse.json(
         { error: "USERS_FIND_FAIL", message: userFindErr.message },
         { status: 500 }
@@ -538,11 +616,17 @@ export async function POST(req: Request) {
 
     if (existingUser?.id) {
       userId = existingUser.id;
+      console.log(`[LAUNCH ${reqId}] users.find OK -> existing user`, { userId });
     } else {
-      // tenta puxar algo do Clerk pra preencher
-      const clerkUser = await client.users.getUser(clerkUserId);
+      console.log(`[LAUNCH ${reqId}] users.find OK -> creating user`);
+
+      console.time(`[LAUNCH ${reqId}] clerk.users.getUser`);
+      const clerkUser = await clerkClient.users.getUser(clerkUserId);
+      console.timeEnd(`[LAUNCH ${reqId}] clerk.users.getUser`);
+
       const email =
         clerkUser.emailAddresses?.[0]?.emailAddress || null;
+
       const displayName =
         clerkUser.fullName ||
         email?.split("@")[0] ||
@@ -553,6 +637,13 @@ export async function POST(req: Request) {
         email?.split("@")[0] ||
         `user_${clerkUserId.slice(0, 8)}`;
 
+      console.log(`[LAUNCH ${reqId}] clerk user snapshot`, {
+        email: email ? email.replace(/(.{2}).+(@.+)/, "$1***$2") : null,
+        fullName: clerkUser.fullName ?? null,
+        username: clerkUser.username ?? null,
+      });
+
+      console.time(`[LAUNCH ${reqId}] users.insert`);
       const { data: newUser, error: newUserErr } = await supabase
         .from("users")
         .insert({
@@ -563,9 +654,10 @@ export async function POST(req: Request) {
         })
         .select("id")
         .single();
+      console.timeEnd(`[LAUNCH ${reqId}] users.insert`);
 
       if (newUserErr || !newUser) {
-        console.error("[LAUNCH][users insert]", newUserErr);
+        console.error(`[LAUNCH ${reqId}] users.insert FAIL`, newUserErr);
         return NextResponse.json(
           { error: "USERS_INSERT_FAIL", message: newUserErr?.message },
           { status: 500 }
@@ -573,17 +665,20 @@ export async function POST(req: Request) {
       }
 
       userId = newUser.id;
+      console.log(`[LAUNCH ${reqId}] users.insert OK`, { userId });
     }
 
     // 4) creators: garante creator ligado ao user
+    console.time(`[LAUNCH ${reqId}] creators.find`);
     const { data: existingCreator, error: creatorFindErr } = await supabase
       .from("creators")
       .select("id")
       .eq("user_id", userId)
       .maybeSingle();
+    console.timeEnd(`[LAUNCH ${reqId}] creators.find`);
 
     if (creatorFindErr) {
-      console.error("[LAUNCH][creators find]", creatorFindErr);
+      console.error(`[LAUNCH ${reqId}] creators.find FAIL`, creatorFindErr);
       return NextResponse.json(
         { error: "CREATOR_FIND_FAIL", message: creatorFindErr.message },
         { status: 500 }
@@ -591,10 +686,13 @@ export async function POST(req: Request) {
     }
 
     let creatorId: string;
-
     if (existingCreator?.id) {
       creatorId = existingCreator.id;
+      console.log(`[LAUNCH ${reqId}] creators.find OK -> existing creator`, { creatorId });
     } else {
+      console.log(`[LAUNCH ${reqId}] creators.find OK -> creating creator`);
+
+      console.time(`[LAUNCH ${reqId}] creators.insert`);
       const { data: newCreator, error: newCreatorErr } = await supabase
         .from("creators")
         .insert({
@@ -604,9 +702,10 @@ export async function POST(req: Request) {
         })
         .select("id")
         .single();
+      console.timeEnd(`[LAUNCH ${reqId}] creators.insert`);
 
       if (newCreatorErr || !newCreator) {
-        console.error("[LAUNCH][creators insert]", newCreatorErr);
+        console.error(`[LAUNCH ${reqId}] creators.insert FAIL`, newCreatorErr);
         return NextResponse.json(
           { error: "CREATOR_INSERT_FAIL", message: newCreatorErr?.message },
           { status: 500 }
@@ -614,20 +713,25 @@ export async function POST(req: Request) {
       }
 
       creatorId = newCreator.id;
+      console.log(`[LAUNCH ${reqId}] creators.insert OK`, { creatorId });
     }
 
     // 5) coin_types
     const coinTypeCode =
       input.tokenType === "COMUNIDADE" ? "COMUNIDADE" : "MEME";
 
+    console.log(`[LAUNCH ${reqId}] coinTypeCode resolved`, { coinTypeCode });
+
+    console.time(`[LAUNCH ${reqId}] coin_types.select`);
     const { data: coinType, error: coinTypeErr } = await supabase
       .from("coin_types")
       .select("id, code")
       .eq("code", coinTypeCode)
       .single();
+    console.timeEnd(`[LAUNCH ${reqId}] coin_types.select`);
 
     if (coinTypeErr || !coinType) {
-      console.error("[LAUNCH][coin_types]", coinTypeErr);
+      console.error(`[LAUNCH ${reqId}] coin_types FAIL`, coinTypeErr);
       return NextResponse.json(
         {
           error: "COIN_TYPE_FAIL",
@@ -637,12 +741,24 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log(`[LAUNCH ${reqId}] coin_types OK`, {
+      coinTypeId: coinType.id,
+      coinTypeCode: coinType.code,
+    });
+
     // 6) cálculos econômicos
     const totalSupply = Number(input.totalSupply || 0);
     const poolPercent = Number(input.poolPercent || 0);
     const faceValue = Number(input.faceValue || 0);
 
+    console.log(`[LAUNCH ${reqId}] econ input`, {
+      totalSupply,
+      poolPercent,
+      faceValue,
+    });
+
     if (!totalSupply || !poolPercent || !faceValue) {
+      console.warn(`[LAUNCH ${reqId}] ECON_INVALID -> 400`);
       return NextResponse.json(
         {
           error: "ECON_INVALID",
@@ -656,7 +772,14 @@ export async function POST(req: Request) {
     const bagCoins = totalSupply - poolCoins;
     const baseReserve = poolCoins * faceValue;
 
+    console.log(`[LAUNCH ${reqId}] econ calc`, {
+      poolCoins,
+      bagCoins,
+      baseReserve,
+    });
+
     // 7) wallet da pool
+    console.time(`[LAUNCH ${reqId}] wallets.pool.insert`);
     const { data: poolWallet, error: poolWalletErr } = await supabase
       .from("wallets")
       .insert({
@@ -668,16 +791,22 @@ export async function POST(req: Request) {
       })
       .select("id")
       .single();
+    console.timeEnd(`[LAUNCH ${reqId}] wallets.pool.insert`);
 
     if (poolWalletErr || !poolWallet) {
-      console.error("[LAUNCH][pool wallet]", poolWalletErr);
+      console.error(`[LAUNCH ${reqId}] wallets.pool.insert FAIL`, poolWalletErr);
       return NextResponse.json(
         { error: "POOL_WALLET_FAIL", message: poolWalletErr?.message },
         { status: 500 }
       );
     }
 
+    console.log(`[LAUNCH ${reqId}] wallets.pool.insert OK`, {
+      poolWalletId: poolWallet.id,
+    });
+
     // 8) wallet do criador (BAG)
+    console.time(`[LAUNCH ${reqId}] wallets.creator.select`);
     const { data: creatorWallet } = await supabase
       .from("wallets")
       .select("id, wallet_type")
@@ -686,6 +815,12 @@ export async function POST(req: Request) {
       .order("wallet_type", { ascending: true })
       .limit(1)
       .maybeSingle();
+    console.timeEnd(`[LAUNCH ${reqId}] wallets.creator.select`);
+
+    console.log(`[LAUNCH ${reqId}] wallets.creator.select OK`, {
+      creatorWalletId: creatorWallet?.id ?? null,
+      creatorWalletType: creatorWallet?.wallet_type ?? null,
+    });
 
     // 9) slug
     const baseSlug =
@@ -700,10 +835,16 @@ export async function POST(req: Request) {
     const slug =
       (baseSlug || crypto.randomUUID().slice(0, 8)).toLowerCase();
 
+    console.log(`[LAUNCH ${reqId}] slug resolved`, {
+      baseSlug,
+      slug,
+    });
+
     // 10) cria coin
     const RISK_DISCLAIMER =
       "Este token é um experimento especulativo de narrativa. Não é investimento seguro, não é produto financeiro regulado, não tem garantia de retorno. Você pode perder 100% do valor colocado aqui. Ao usar o 3ustaquio, você declara que entende que isso é jogo de alto risco e age por conta própria.";
 
+    console.time(`[LAUNCH ${reqId}] coins.insert`);
     const { data: coin, error: coinErr } = await supabase
       .from("coins")
       .insert({
@@ -723,9 +864,10 @@ export async function POST(req: Request) {
       })
       .select("id")
       .single();
+    console.timeEnd(`[LAUNCH ${reqId}] coins.insert`);
 
     if (coinErr || !coin) {
-      console.error("[LAUNCH][coin insert]", coinErr);
+      console.error(`[LAUNCH ${reqId}] coins.insert FAIL`, coinErr);
       return NextResponse.json(
         { error: "COIN_INSERT_FAIL", message: coinErr?.message },
         { status: 500 }
@@ -733,6 +875,7 @@ export async function POST(req: Request) {
     }
 
     const coinId = coin.id as string;
+    console.log(`[LAUNCH ${reqId}] coins.insert OK`, { coinId });
 
     // 11) saldos iniciais
     const balanceRows: any[] = [
@@ -753,13 +896,25 @@ export async function POST(req: Request) {
       });
     }
 
+    console.log(`[LAUNCH ${reqId}] wallet_balances rows`, {
+      rows: balanceRows.map((r) => ({
+        wallet_id: r.wallet_id,
+        coin_id: r.coin_id,
+        balance_available: r.balance_available,
+      })),
+    });
+
+    console.time(`[LAUNCH ${reqId}] wallet_balances.insert`);
     const { error: wbErr } = await supabase
       .from("wallet_balances")
       .insert(balanceRows);
+    console.timeEnd(`[LAUNCH ${reqId}] wallet_balances.insert`);
 
-    if (wbErr) console.error("[LAUNCH][wallet_balances]", wbErr);
+    if (wbErr) console.error(`[LAUNCH ${reqId}] wallet_balances FAIL`, wbErr);
+    else console.log(`[LAUNCH ${reqId}] wallet_balances OK`);
 
     // 12) init AMM
+    console.time(`[LAUNCH ${reqId}] amm.init_coin_market_state`);
     const { error: ammErr } = await supabase.rpc(
       "init_coin_market_state",
       {
@@ -768,7 +923,10 @@ export async function POST(req: Request) {
         p_coin_reserve: poolCoins.toString(),
       }
     );
-    if (ammErr) console.error("[LAUNCH][init AMM]", ammErr);
+    console.timeEnd(`[LAUNCH ${reqId}] amm.init_coin_market_state`);
+
+    if (ammErr) console.error(`[LAUNCH ${reqId}] amm init FAIL`, ammErr);
+    else console.log(`[LAUNCH ${reqId}] amm init OK`);
 
     // 13) deposits PIX
     try {
@@ -780,7 +938,14 @@ export async function POST(req: Request) {
       const amountBase =
         firstTx?.value ? firstTx.value / 100 : null;
 
+      console.log(`[LAUNCH ${reqId}] deposit snapshot`, {
+        pixRef: ref,
+        amountBase,
+        hasPlatformWalletLookup: true,
+      });
+
       if (amountBase != null) {
+        console.time(`[LAUNCH ${reqId}] wallets.platform.select`);
         const { data: platformWallet } = await supabase
           .from("wallets")
           .select("id")
@@ -789,8 +954,14 @@ export async function POST(req: Request) {
           .order("created_at", { ascending: true })
           .limit(1)
           .maybeSingle();
+        console.timeEnd(`[LAUNCH ${reqId}] wallets.platform.select`);
+
+        console.log(`[LAUNCH ${reqId}] wallets.platform`, {
+          platformWalletId: platformWallet?.id ?? null,
+        });
 
         if (platformWallet?.id) {
+          console.time(`[LAUNCH ${reqId}] deposits.insert`);
           await supabase.from("deposits").insert({
             wallet_id: platformWallet.id,
             provider: "CELCOIN",
@@ -799,14 +970,21 @@ export async function POST(req: Request) {
             currency: "BRL",
             status: "PENDING",
           });
+          console.timeEnd(`[LAUNCH ${reqId}] deposits.insert`);
+          console.log(`[LAUNCH ${reqId}] deposits.insert OK`);
+        } else {
+          console.warn(`[LAUNCH ${reqId}] deposits skipped (no platform wallet)`);
         }
+      } else {
+        console.warn(`[LAUNCH ${reqId}] deposits skipped (amountBase null)`);
       }
     } catch (e) {
-      console.warn("[LAUNCH][deposit]", e);
+      console.warn(`[LAUNCH ${reqId}] deposits FAIL`, e);
     }
 
     // 14) post SYSTEM
     try {
+      console.time(`[LAUNCH ${reqId}] posts.insert`);
       await supabase.from("posts").insert({
         coin_id: coinId,
         author_user_id: userId,
@@ -822,21 +1000,33 @@ export async function POST(req: Request) {
           poolCoins,
           bagCoins,
           baseReserve,
+          clerkUserId,
+          clerkSessionId: sessionId,
         },
       });
+      console.timeEnd(`[LAUNCH ${reqId}] posts.insert`);
+      console.log(`[LAUNCH ${reqId}] posts.insert OK`);
     } catch (e) {
-      console.warn("[LAUNCH][post system]", e);
+      console.warn(`[LAUNCH ${reqId}] posts.insert FAIL`, e);
     }
 
+    const dt = Date.now() - t0;
+    console.log(`[LAUNCH ${reqId}] <<< success`, {
+      coinId,
+      slug,
+      ms: dt,
+    });
+
+    console.timeEnd(`[LAUNCH ${reqId}] total`);
     return NextResponse.json({ coinId, slug });
   } catch (err: any) {
-    console.error("[LAUNCH][fatal]", err);
+    console.error(`[LAUNCH ${reqId}] [fatal]`, err);
+
+    console.timeEnd(`[LAUNCH ${reqId}] total`);
     return NextResponse.json(
       {
         error: err?.message || "LAUNCH_FAIL",
-        message:
-          err?.message ||
-          "Erro inesperado ao lançar token.",
+        message: err?.message || "Erro inesperado ao lançar token.",
       },
       { status: 500 }
     );

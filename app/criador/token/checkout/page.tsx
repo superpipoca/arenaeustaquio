@@ -589,7 +589,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header3ustaquio from "@/app/componentes/ui/layout/Header3ustaquio";
 import Footer3ustaquio from "@/app/componentes/ui/layout/Footer3ustaquio";
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useAuth, useUser, useSession } from "@clerk/nextjs";
 import { createPixCharge } from "../../../lib/pixPayment";
 import { launchTokenAfterPix } from "@/app/lib/launchToken";
 
@@ -613,13 +613,16 @@ export default function CriadorTokenCheckoutPage() {
   const router = useRouter();
   const search = useSearchParams();
 
-  // ===== Clerk (UMA chamada só) =====
+  // ===== Clerk =====
   const {
     isLoaded: authLoaded,
     isSignedIn,
     getToken,
+    userId,
+    sessionId,
   } = useAuth();
   const { isLoaded: userLoaded, user } = useUser();
+  const { isLoaded: sessionLoaded, session } = useSession();
 
   // ===== Params vindos da tela anterior =====
   const tokenType = (search.get("type") as TokenType) || "";
@@ -689,10 +692,10 @@ export default function CriadorTokenCheckoutPage() {
     return tokenType === "PESSOA"
       ? "Token de Pessoa"
       : tokenType === "PROJETO"
-        ? "Token de Projeto"
-        : tokenType === "COMUNIDADE"
-          ? "Token de Comunidade"
-          : "Token de Narrativa";
+      ? "Token de Projeto"
+      : tokenType === "COMUNIDADE"
+      ? "Token de Comunidade"
+      : "Token de Narrativa";
   }, [tokenType]);
 
   const tokenUrl = useMemo(() => {
@@ -725,7 +728,8 @@ export default function CriadorTokenCheckoutPage() {
     !!email.trim() &&
     cpfValido(cpf) &&
     !generating &&
-    step === "REVIEW";
+    step === "REVIEW" &&
+    !!sessionId;
 
   const handleGeneratePix = useCallback(async () => {
     if (!canGeneratePix) return;
@@ -745,6 +749,9 @@ export default function CriadorTokenCheckoutPage() {
           publicName,
           tokenName,
           ticker,
+          clerkUserId: userId,
+          clerkSessionId: sessionId,
+          clerkSessionStatus: session?.status,
         },
       });
 
@@ -754,7 +761,7 @@ export default function CriadorTokenCheckoutPage() {
       console.error("Erro ao gerar PIX:", err);
       setPixError(
         err?.message ||
-        "Não foi possível gerar o PIX. Tente novamente em alguns instantes."
+          "Não foi possível gerar o PIX. Tente novamente em alguns instantes."
       );
     } finally {
       setGenerating(false);
@@ -768,6 +775,9 @@ export default function CriadorTokenCheckoutPage() {
     ticker,
     tokenType,
     publicName,
+    userId,
+    sessionId,
+    session?.status,
   ]);
 
   const handleCopyCode = useCallback(() => {
@@ -814,7 +824,9 @@ export default function CriadorTokenCheckoutPage() {
       }
 
       if (!clerkToken) {
-        throw new Error("Não foi possível obter seu token de sessão. Faça login de novo.");
+        throw new Error(
+          "Não foi possível obter seu token de sessão. Faça login de novo."
+        );
       }
 
       const { slug } = await launchTokenAfterPix({
@@ -829,6 +841,8 @@ export default function CriadorTokenCheckoutPage() {
         faceValue,
         pixData,
         clerkToken,
+        clerkSessionId: sessionId,
+        clerkUserId: userId,
       });
 
       router.push(`/criador/token/${slug}?novo=1`);
@@ -836,7 +850,7 @@ export default function CriadorTokenCheckoutPage() {
       console.error("[CHECKOUT] Erro ao lançar token depois do PIX:", err);
       setLaunchError(
         err?.message ||
-        "Erro ao lançar o token depois do pagamento. Tente novamente."
+          "Erro ao lançar o token depois do pagamento. Tente novamente."
       );
     } finally {
       setLaunching(false);
@@ -847,7 +861,7 @@ export default function CriadorTokenCheckoutPage() {
     pixData?.Charge?.Transactions?.[0]?.Pix?.image ?? null;
 
   // ===== Fullscreen loader enquanto Clerk carrega =====
-  if (!authLoaded || !userLoaded) {
+  if (!authLoaded || !userLoaded || !sessionLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white">
         <div className="animate-pulse text-neutral-500">
